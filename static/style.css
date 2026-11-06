@@ -86,3 +86,106 @@ h1 { font-size: 1.5rem; margin: 0 0 16px; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); border: 0;
 }
+
+h2 { font-size: 1.1rem; margin: 24px 0 10px; }
+a { color: var(--accent); }
+
+.page-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.page-head h1 { margin: 0; }
+.back { margin: 0 0 12px; }
+.back a { text-decoration: none; }
+
+.button { display: inline-block; text-decoration: none; text-align: center;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.button.primary { border-color: var(--accent); }
+
+.notice {
+  background: #e6f4ea; color: #1e6b34;
+  border-radius: 8px; padding: 10px 12px; margin: 0 0 16px;
+}
+
+/* Значки статусов */
+.badges { display: flex; gap: 6px; }
+.badge {
+  display: inline-block; font-size: 0.8rem; font-weight: 600;
+  padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+}
+.status-new { background: var(--accent-soft); color: var(--accent); }
+.status-in_work { background: #fff3d6; color: #8a5a00; }
+.status-done { background: #e6f4ea; color: #1e6b34; }
+.status-cancelled { background: #eceef1; color: var(--muted); }
+.badge.urgent { background: var(--danger-soft); color: var(--danger); }
+
+/* Список заявок */
+.request-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.request-row {
+  display: grid; gap: 6px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); text-decoration: none;
+}
+.request-row:hover { border-color: var(--accent); }
+.row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.num { font-weight: 700; }
+.row-type { color: var(--muted); font-size: 0.9rem; margin-left: auto; }
+.row-main { display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.row-meta { display: flex; gap: 4px 16px; flex-wrap: wrap; font-size: 0.875rem; }
+
+/* Форма */
+.form { display: grid; gap: 18px; max-width: 640px; }
+fieldset.field { border: 0; margin: 0; padding: 0; }
+fieldset.field legend { padding: 0; margin-bottom: 6px; }
+.field textarea, .field input[type=date] {
+  font: inherit; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.field textarea { resize: vertical; }
+.field input:not([name=pin]) { letter-spacing: normal; }
+.field textarea:focus, .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field .muted { font-weight: 400; }
+.has-error input, .has-error textarea { border-color: var(--danger); }
+.field-error { color: var(--danger); font-size: 0.875rem; font-weight: 400; }
+
+.choice-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.choice {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px;
+}
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input, .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.has-error .choice { border-color: var(--danger); }
+
+.field-pair { display: flex; gap: 16px 24px; flex-wrap: wrap; align-items: end; }
+.check { display: flex; align-items: center; gap: 10px; font-weight: 500; cursor: pointer; padding: 12px 0; }
+
+.form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Карточка заявки */
+.details { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; margin: 0; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; }
+.multiline { white-space: pre-line; }
+@media (max-width: 560px) {
+  .details { grid-template-columns: 1fr; gap: 2px; }
+  .details dd { margin-bottom: 10px; }
+}
+
+/* Выбор дня */
+.date-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+.date-pick select {
+  font: inherit; padding: 11px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.date-pick select[name=agreed_day] { min-width: 110px; }
+.date-pick select[name=agreed_month] { min-width: 160px; }
+.date-pick select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.has-error .date-pick select { border-color: var(--danger); }
+.quick-dates { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip {
+  font: inherit; font-size: 0.875rem; cursor: pointer;
+  background: var(--surface); color: var(--accent);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
+}
+.chip:hover { border-color: var(--accent); background: var(--accent-soft); }

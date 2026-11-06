@@ -1,8 +1,39 @@
 {% extends "base.html" %}
+{% block title %}Все заявки — Заявки{% endblock %}
 {% block content %}
-<h1>Все заявки</h1>
+<div class="page-head">
+  <h1>Все заявки</h1>
+  <a class="button primary" href="{{ url_for('request_new') }}">+ Новая заявка</a>
+</div>
+
+{% if requests %}
+<ul class="request-list">
+  {% for r in requests %}
+  <li>
+    <a class="request-row" href="{{ url_for('request_view', request_id=r.id) }}">
+      <div class="row-top">
+        <span class="num">№{{ r.id }}</span>
+        <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
+        {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+        <span class="row-type">{{ r.work_type }}</span>
+      </div>
+      <div class="row-main">
+        <strong>{{ r.client_name }}</strong>
+        <span class="muted">{{ r.address }}</span>
+      </div>
+      <div class="row-meta muted">
+        {% if r.agreed_date %}<span>На {{ r.agreed_date | d }}</span>{% endif %}
+        <span>Создал: {{ r.created_by | who }}, {{ r.created_at | dt }}</span>
+        {% if r.taken_by %}<span>Взяла: {{ r.taken_by | who }}</span>{% endif %}
+      </div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
 <section class="card empty">
-  <p>Вы вошли как <strong>{{ user.name }}</strong>.</p>
-  <p class="muted">Здесь будут создание заявки и список всех заявок (этап 2).</p>
+  <p>Заявок пока нет.</p>
+  <p class="muted">Нажмите «Новая заявка», чтобы создать первую.</p>
 </section>
+{% endif %}
 {% endblock %}

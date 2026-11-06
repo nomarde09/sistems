@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Заявка №{{ r.id }} — Заявки{% endblock %}
+{% block content %}
+<p class="back"><a href="{{ url_for('office_home') }}">← Все заявки</a></p>
+
+{% if created %}<p class="notice">Заявка создана. Бригады увидят её в свободных.</p>{% endif %}
+
+<div class="page-head">
+  <h1>Заявка №{{ r.id }}</h1>
+  <div class="badges">
+    <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
+    {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <dl class="details">
+    <dt>Клиент</dt><dd>{{ r.client_name }}</dd>
+    <dt>Телефон</dt><dd><a href="tel:{{ r.phone }}">{{ r.phone }}</a></dd>
+    <dt>Адрес</dt><dd>{{ r.address }}</dd>
+    <dt>Что монтируем</dt><dd>{{ r.work_type }}</dd>
+    <dt>Договорились на</dt><dd>{{ (r.agreed_date | d) or "не указано" }}</dd>
+    <dt>Что сделать</dt><dd class="multiline">{{ r.description }}</dd>
+  </dl>
+</section>
+
+<h2>История</h2>
+<section class="card">
+  <dl class="details">
+    <dt>Создал</dt><dd>{{ r.created_by | who }}, {{ r.created_at | dt }}</dd>
+    {% if r.taken_by %}<dt>Взяла</dt><dd>{{ r.taken_by | who }}, {{ r.taken_at | dt }}</dd>{% endif %}
+    {% if r.done_at %}<dt>Выполнена</dt><dd>{{ r.done_at | dt }}</dd>{% endif %}
+    {% if r.cancelled_at %}<dt>Отменил</dt><dd>{{ r.cancelled_by | who }}, {{ r.cancelled_at | dt }}</dd>{% endif %}
+  </dl>
+</section>
+{% endblock %}

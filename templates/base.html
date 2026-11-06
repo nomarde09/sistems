@@ -14,6 +14,7 @@
       <div class="who">
         <span class="who-name">{{ user.name }}</span>
         <form method="post" action="{{ url_for('logout') }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
           <button class="link-button" type="submit">Выйти</button>
         </form>
       </div>

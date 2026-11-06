@@ -8,9 +8,10 @@
   {% if error %}<p class="alert">{{ error }}</p>{% endif %}
 
   <form method="post" class="login-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
     <fieldset class="who-list">
       <legend class="sr-only">Кто вы</legend>
-      {% for user_id, u in users.items() %}
+      {% for user_id, u in USERS.items() %}
       <label class="who-option">
         <input type="radio" name="user_id" value="{{ user_id }}" {% if selected == user_id %}checked{% endif %} required>
         <span>{{ u.name }}</span>
