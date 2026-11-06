@@ -44,6 +44,9 @@ def credentials():
 
 def _recent_fails(ip):
     now = time.monotonic()
+    if len(_failed_attempts) > 2000:  # чистим старые адреса, чтобы список не рос бесконечно
+        for old_ip in [k for k, ts in _failed_attempts.items() if not ts or now - ts[-1] >= LOCK_SECONDS]:
+            del _failed_attempts[old_ip]
     _failed_attempts[ip] = [t for t in _failed_attempts[ip] if now - t < LOCK_SECONDS]
     return _failed_attempts[ip]
 

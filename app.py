@@ -131,6 +131,10 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=180),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    # На хостинге с https включите COOKIE_SECURE=1 в .env: cookie входа не уйдёт по http.
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "") == "1",
+    # Формы у нас маленькие; огромные отправки отбрасываем, чтобы ими нельзя было забить сайт.
+    MAX_CONTENT_LENGTH=256 * 1024,
 )
 
 
@@ -158,11 +162,44 @@ def who_for_log():
     return session.get("user_id") or "-"
 
 
+def safe_for_log(text, limit=300):
+    """Убирает из текста переводы строк и прочие служебные символы, чтобы нельзя было
+    подделать строку лога через адрес страницы; слишком длинное обрезает."""
+    text = "".join(ch if ch.isprintable() else f"\\x{ord(ch):02x}" for ch in str(text))
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
 @app.after_request
 def log_request(response):
     if not request.path.startswith("/static/"):
         log.info("%s %s %s %s %s", request.remote_addr, who_for_log(), request.method,
-                 request.path, response.status_code)
+                 safe_for_log(request.path), response.status_code)
+    return response
+
+
+# Защитные заголовки для браузера:
+# - нельзя встроить сайт в чужую страницу (защита от подмены кликов);
+# - браузер не угадывает тип файлов;
+# - при переходе на карты и другие сайты адрес нашей страницы (с телефоном в поиске) не передаётся;
+# - скрипты, стили и картинки — только наши; формы отправляются только к нам;
+# - геолокация — только для нашего сайта, камера и микрофон не нужны.
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; "
+        "img-src 'self' data:; connect-src 'self'; manifest-src 'self'; "
+        "form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+    ),
+    "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=()",
+}
+
+
+@app.after_request
+def security_headers(response):
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
     return response
 
 
@@ -314,7 +351,9 @@ def check_csrf():
     """Каждая отправка формы должна нести наш скрытый ключ — защита от чужих сайтов."""
     if request.method == "POST":
         sent = request.form.get("csrf", "")
-        if not sent or not hmac.compare_digest(sent, session.get("csrf", "")):
+        expected = session.get("csrf", "")
+        # Сравниваем байты: строки с не-латинскими буквами compare_digest не принимает (падал с 500).
+        if not sent or not expected or not hmac.compare_digest(sent.encode(), expected.encode()):
             abort(400)
 
 
@@ -488,8 +527,18 @@ _login_fails = {}
 
 def _fails(key):
     now = time.monotonic()
+    if len(_login_fails) > 2000:  # чистим старые записи, чтобы перебор логинов не съел память
+        for old_key in [k for k, ts in _login_fails.items() if not ts or now - ts[-1] >= LOGIN_LOCK_SECONDS]:
+            del _login_fails[old_key]
+        if len(_login_fails) > 5000:  # всё ещё много — оставляем самые свежие
+            keep = sorted(_login_fails.items(), key=lambda kv: kv[1][-1], reverse=True)[:2000]
+            _login_fails.clear()
+            _login_fails.update(keep)
     recent = [t for t in _login_fails.get(key, []) if now - t < LOGIN_LOCK_SECONDS]
-    _login_fails[key] = recent
+    if recent:
+        _login_fails[key] = recent
+    else:
+        _login_fails.pop(key, None)
     return recent
 
 
@@ -1155,6 +1204,23 @@ tech.register(app, {
 @app.errorhandler(400)
 def bad_request(_e):
     return render_template("error.html", message="Страница устарела. Вернитесь назад, обновите её и попробуйте ещё раз."), 400
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Браузеры сами спрашивают /favicon.ico — отдаём наш значок, чтобы не было лишних 404."""
+    return app.send_static_file("favicon-32.png")
+
+
+@app.errorhandler(413)
+def too_large(_e):
+    return render_template("error.html", message="Слишком много текста в форме. Сократите и попробуйте ещё раз."), 413
+
+
+@app.errorhandler(500)
+def server_error(_e):
+    log.error("ОШИБКА 500 на %s %s", request.method, safe_for_log(request.path))
+    return render_template("error.html", message="Что-то пошло не так. Обновите страницу и попробуйте ещё раз."), 500
 
 
 @app.errorhandler(404)
