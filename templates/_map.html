@@ -1,0 +1,13 @@
+{# Кнопки карты. Нужна: r. Первая кнопка — крупная, остальные — помельче. #}
+{% set links = map_links(r.location, r.address) %}
+{% if links %}
+<div class="map-buttons">
+  {% for label, url in links %}
+  <a class="button {{ 'map-button wide' if loop.first else 'map-alt' }}" href="{{ url }}"
+     target="_blank" rel="noopener noreferrer">
+    {% if loop.first %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>{% endif %}
+    {{ label }}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

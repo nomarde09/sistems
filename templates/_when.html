@@ -1,0 +1,2 @@
+{# «12 ноября, 14:00» — на какой день и время договорились. Нужна: r #}
+{%- if r.agreed_date -%}{{ r.agreed_date | d }}{% if r.agreed_time %}, {{ r.agreed_time }}{% endif %}{%- endif -%}

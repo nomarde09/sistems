@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{% block tech_title %}Технический раздел{% endblock %} — Заявки{% endblock %}
+{% block content %}
+<div class="tech-bar">
+  <span class="tech-mark">Технический раздел · только чтение</span>
+  <nav class="tech-nav">
+    <a href="{{ url_for('tech.stats') }}" class="{{ 'active' if request.endpoint == 'tech.stats' }}">Статистика</a>
+    <a href="{{ url_for('tech.journal') }}" class="{{ 'active' if request.endpoint in ('tech.journal', 'tech.request_card') }}">Журнал действий</a>
+    <a href="{{ url_for('tech.app_log') }}" class="{{ 'active' if request.endpoint == 'tech.app_log' }}">Лог приложения</a>
+    <form method="post" action="{{ url_for('tech.logout') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button class="link-button" type="submit">Выйти</button>
+    </form>
+  </nav>
+</div>
+{% block tech_content %}{% endblock %}
+{% endblock %}

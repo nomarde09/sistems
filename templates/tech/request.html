@@ -1,0 +1,27 @@
+{% extends "tech/layout.html" %}
+{% block tech_title %}Заявка №{{ r.id }}{% endblock %}
+{% block tech_content %}
+<p class="back"><a href="{{ url_for('tech.journal', request_id=r.id) }}">← Журнал этой заявки</a></p>
+<div class="page-head">
+  <h1>Заявка №{{ r.id }}</h1>
+  <div class="badges">{% include "_status_badge.html" %}{% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}</div>
+</div>
+
+<section class="card">
+  <dl class="details">
+    {% for key in r.keys() %}
+    <dt>{{ key }}</dt><dd class="multiline">{{ r[key] if r[key] is not none else "—" }}</dd>
+    {% endfor %}
+  </dl>
+</section>
+
+<h2>История</h2>
+<section class="card">
+  <ol class="history">
+    {% for e in events %}
+    <li><span class="when">{{ e.at | dt }}</span>
+      <span><strong>{{ e.user_id | who }}</strong> — {{ EVENT_LABELS.get(e.action, e.action) | lower }}{% if e.details %}<span class="muted"> ({{ e.details }})</span>{% endif %}</span></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

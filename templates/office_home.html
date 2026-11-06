@@ -1,24 +1,57 @@
 {% extends "base.html" %}
-{% block title %}Все заявки — Заявки{% endblock %}
+{% block title %}{{ tabs[tab] }} — Заявки{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Все заявки</h1>
+  <h1>Заявки</h1>
   <a class="button primary" href="{{ url_for('request_new') }}">+ Новая заявка</a>
 </div>
 
+<nav class="status-tabs" aria-label="Заявки по статусу">
+  {% for key, label in tabs.items() %}
+  <a href="{{ tab_links[key] }}" class="status-tab tab-{{ key }} {{ 'active' if tab == key }}"
+     {% if tab == key %}aria-current="page"{% endif %}>
+    {{ label }} <span class="count">{{ counts[key] }}</span>
+  </a>
+  {% endfor %}
+</nav>
+
 <form method="get" class="card filters" role="search">
-  <label class="field search">
-    <span class="sr-only">Поиск</span>
-    <input type="search" name="q" value="{{ filters.q }}" placeholder="Поиск: клиент, адрес, телефон, № заявки…">
-  </label>
+  {% if tab != 'new' %}<input type="hidden" name="status" value="{{ tab }}">{% endif %}
+  <div class="search-row">
+    <label class="field search">
+      <span class="sr-only">Поиск</span>
+      <input type="search" name="q" value="{{ filters.q }}" placeholder="Клиент, адрес, телефон, №…">
+    </label>
+    <button class="button primary" type="submit">Найти</button>
+  </div>
+  {% set extra = [filters.brigada, filters.avtor, filters.period, filters.oplata, filters.tip, filters.oborud, filters.garantiya] | select | list | length %}
+  <details class="more-filters" {% if extra %}open{% endif %}>
+    <summary>Фильтры{% if extra %} ({{ extra }}){% endif %}</summary>
   <div class="filter-row">
     <label>
-      <span>Статус</span>
-      <select name="status">
+      <span>Тип заявки</span>
+      <select name="tip">
         <option value="">любой</option>
-        {% for key, label in STATUSES.items() %}
-        <option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>
+        {% for key, label in REQUEST_TYPES.items() %}
+        <option value="{{ key }}" {% if filters.tip == key %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Оборудование</span>
+      <select name="oborud">
+        <option value="">любое</option>
+        {% for key, label in EQUIPMENT.items() %}
+        <option value="{{ key }}" {% if filters.oborud == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Гарантия</span>
+      <select name="garantiya">
+        <option value="">все</option>
+        <option value="da" {% if filters.garantiya == 'da' %}selected{% endif %}>гарантийные</option>
+        <option value="net" {% if filters.garantiya == 'net' %}selected{% endif %}>платные</option>
       </select>
     </label>
     <label>
@@ -26,7 +59,7 @@
       <select name="brigada">
         <option value="">любая</option>
         {% for key, u in brigades.items() %}
-        <option value="{{ key }}" {% if filters.brigada == key %}selected{% endif %}>{{ u.name }}</option>
+        <option value="{{ key }}" {% if filters.brigada == key %}selected{% endif %}>{{ key | who }}</option>
         {% endfor %}
       </select>
     </label>
@@ -35,7 +68,7 @@
       <select name="avtor">
         <option value="">любой</option>
         {% for key, u in authors.items() %}
-        <option value="{{ key }}" {% if filters.avtor == key %}selected{% endif %}>{{ u.name }}</option>
+        <option value="{{ key }}" {% if filters.avtor == key %}selected{% endif %}>{{ key | who }}</option>
         {% endfor %}
       </select>
     </label>
@@ -48,17 +81,31 @@
         {% endfor %}
       </select>
     </label>
+    <label>
+      <span>Оплата</span>
+      <select name="oplata">
+        <option value="">любая</option>
+        {% for key, label in PAYMENTS.items() %}
+        <option value="{{ key }}" {% if filters.oplata == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
   </div>
-  <div class="form-actions">
-    <button class="button primary" type="submit">Найти</button>
-    {% if filtering %}<a class="button" href="{{ url_for('office_home') }}">Сбросить</a>{% endif %}
-  </div>
+  </details>
+  <div class="form-actions">{% if filtering %}<a class="button" href="{{ url_for('office_home', status=tab) }}">Сбросить</a>{% endif %}</div>
 </form>
 
+{% if filtering or summary.done %}
 <p class="summary">
-  {% if filtering %}Найдено: <strong>{{ summary.found }}</strong>.{% else %}Всего заявок: <strong>{{ summary.found }}</strong>.{% endif %}
+  {% if filtering %}Найдено: <strong>{{ summary.found }}</strong>.{% endif %}
   {% if summary.done %}Выполнено: <strong>{{ summary.done }}</strong> на сумму <strong class="price">{{ summary.total | money }}</strong>.{% endif %}
 </p>
+{% endif %}
+{% if summary.by_payment %}
+<p class="summary pay-summary">
+  {% for label, amount in summary.by_payment %}<span>{{ label }}: <strong class="price">{{ amount | money }}</strong></span>{% endfor %}
+</p>
+{% endif %}
 
 {% if requests %}
 <ul class="request-list">
@@ -67,34 +114,42 @@
     <a class="request-row" href="{{ url_for('request_view', request_id=r.id) }}">
       <div class="row-top">
         <span class="num">№{{ r.id }}</span>
-        <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
+        {% include "_status_badge.html" %}
         {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
-        <span class="row-type">{{ r.work_type }}</span>
+        {% if r.warranty %}<span class="badge warranty">Гарантия</span>{% endif %}
       </div>
       <div class="row-main">
         <strong>{{ r.client_name }}</strong>
         <span class="muted">{{ r.address }}</span>
       </div>
+      <div class="row-what-office">{% include "_type_line.html" %}</div>
       <div class="row-meta muted">
-        {% if r.agreed_date %}<span>На {{ r.agreed_date | d }}</span>{% endif %}
+        {% if r.agreed_date %}<span>На {% include "_when.html" %}</span>{% endif %}
         <span>Создал: {{ r.created_by | who }}, {{ r.created_at | dt }}</span>
-        {% if r.taken_by %}<span>Взяла: {{ r.taken_by | who }}</span>{% endif %}
-        {% if r.status == 'done' %}<span class="done-meta">Выполнена {{ r.done_at | dt }} · <span class="price">{{ r.report_price | money }}</span></span>{% endif %}
+        {% if r.status == 'in_work' %}<span>Взято: {{ r.taken_at | dt }}</span>{% endif %}
+        {% if r.status == 'done' %}<span class="done-meta">Выполнил(а) {{ r.taken_by | who }} {{ r.done_at | dt }} · <span class="price">{{ r.report_price | money }}</span>{% if r.report_payment %} · {{ PAYMENTS[r.report_payment] }}{% endif %}</span>{% endif %}
         {% if r.status == 'cancelled' %}<span>Отменил: {{ r.cancelled_by | who }}, {{ r.cancelled_at | dt }}</span>{% endif %}
       </div>
     </a>
   </li>
   {% endfor %}
 </ul>
-{% elif filtering %}
-<section class="card empty">
-  <p>Ничего не нашлось.</p>
-  <p class="muted">Попробуйте убрать часть условий или нажмите «Сбросить».</p>
-</section>
 {% else %}
 <section class="card empty">
+  {% if counts.all == 0 and not filtering %}
   <p>Заявок пока нет.</p>
   <p class="muted">Нажмите «Новая заявка», чтобы создать первую.</p>
+  {% elif counts.all == 0 %}
+  <p>Ничего не нашлось.</p>
+  <p class="muted">Попробуйте убрать часть условий или нажмите «Сбросить».</p>
+  {% else %}
+  <p>{% if filtering %}Здесь ничего не нашлось.{% else %}В этой вкладке заявок нет.{% endif %}</p>
+  <p class="muted">Есть в других:
+    {% for key, label in tabs.items() if key != 'all' and key != tab and counts[key] %}
+    <a href="{{ tab_links[key] }}">{{ label }} ({{ counts[key] }})</a>{{ "," if not loop.last }}
+    {% endfor %}
+  </p>
+  {% endif %}
 </section>
 {% endif %}
 {% endblock %}

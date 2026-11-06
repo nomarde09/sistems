@@ -1,0 +1,116 @@
+{# Сквозная статистика. Нужны: s (stats.collect), period (ключ, подпись, с, по), periods,
+   stats_endpoint (куда ведут кнопки периода), today. Используется руководителем и техразделом. #}
+{% macro hours(h) %}{% if h is none %}—{% elif h < 48 %}{{ "%.1f"|format(h) }} ч{% else %}{{ "%.1f"|format(h / 24) }} дн{% endif %}{% endmacro %}
+
+<nav class="status-tabs period-tabs" aria-label="Период">
+  {% for key, label in periods.items() %}
+  <a href="{{ url_for(stats_endpoint, p=key) }}" class="status-tab {{ 'active' if period.key == key }}"
+     {% if period.key == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<form method="get" action="{{ url_for(stats_endpoint) }}" class="day-pick">
+  <input type="hidden" name="p" value="day">
+  <label for="stats-day">Конкретный день:</label>
+  <input type="date" id="stats-day" name="d" max="{{ today.isoformat() }}"
+         value="{{ period.start.isoformat() if period.key == 'day' else '' }}">
+  <button class="button" type="submit">Показать</button>
+</form>
+
+<p class="period-caption">Показано: <strong>{{ period.label }}</strong>{% if period.start and period.end != period.start %} ({{ period.start.strftime("%d.%m") }} — {{ period.end.strftime("%d.%m.%Y") }}){% endif %}</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="stat-label">Создано заявок</span><span class="stat-value">{{ s.created }}</span></div>
+  <div class="stat"><span class="stat-label">Взято в работу</span><span class="stat-value">{{ s.taken }}</span></div>
+  <div class="stat"><span class="stat-label">Выполнено</span><span class="stat-value">{{ s.done }}</span></div>
+  <div class="stat"><span class="stat-label">Отменено</span><span class="stat-value">{{ s.cancelled }}</span></div>
+  <div class="stat"><span class="stat-label">Сумма выполненных</span><span class="stat-value price">{{ s.done_sum | money }}</span></div>
+  <div class="stat"><span class="stat-label">Ожидание до взятия, в среднем</span><span class="stat-value">{{ hours(s.avg_wait) }}</span></div>
+  <div class="stat stat-now"><span class="stat-label">Сейчас новых</span><span class="stat-value">{{ s.new_now }}</span></div>
+  <div class="stat stat-now"><span class="stat-label">Сейчас в работе</span><span class="stat-value">{{ s.in_work_now }}</span></div>
+</div>
+
+<h2>Бригады</h2>
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>Кто</th><th>Взял</th><th>Выполнил</th><th>Сумма</th><th>Взял → выполнил, в среднем</th><th>Возвратов</th><th>Сейчас в работе</th></tr></thead>
+  <tbody>
+  {% for b in s.brigades %}
+  <tr><td>{{ b.name }}</td><td>{{ b.taken }}</td><td>{{ b.done }}</td><td class="price">{{ b.sum | money }}</td><td>{{ hours(b.avg_hours) }}</td><td>{{ b.returned }}</td><td>{{ b.in_work_now }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Офис</h2>
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>Кто</th><th>Создал заявок</th><th>Исправлений</th><th>Отмен</th></tr></thead>
+  <tbody>
+  {% for a in s.authors %}
+  <tr><td>{{ a.name }}</td><td>{{ a.created }}</td><td>{{ a.edited }}</td><td>{{ a.cancelled }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Оплата выполненных</h2>
+{% if s.payments %}
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>Способ</th><th>Сумма</th></tr></thead>
+  <tbody>{% for label, amount in s.payments %}<tr><td>{{ label }}</td><td class="price">{{ amount | money }}</td></tr>{% endfor %}</tbody>
+</table>
+</div>
+{% else %}<p class="muted">За этот период выполненных заявок нет.</p>{% endif %}
+
+{% macro breakdown(title, first_col, rows) %}
+<h2>{{ title }}</h2>
+{% if rows %}
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>{{ first_col }}</th><th>Создано</th><th>Выполнено</th><th>Сумма</th></tr></thead>
+  <tbody>
+  {% for label, v in rows %}
+  <tr><td>{{ label }}</td><td>{{ v.created }}</td><td>{{ v.done }}</td><td class="price">{{ v.sum | money }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}<p class="muted">За этот период заявок нет.</p>{% endif %}
+{% endmacro %}
+{{ breakdown("По типу заявки", "Тип заявки", s.by_type) }}
+{{ breakdown("По оборудованию", "Оборудование", s.by_equipment) }}
+{{ breakdown("Гарантийные и платные", "Заявки", s.by_warranty) }}
+
+{% if s.days %}
+<h2>По дням</h2>
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>День</th><th>Создано</th><th>Выполнено</th><th>Сумма</th></tr></thead>
+  <tbody>
+  {% for day, weekday, v in s.days %}
+  <tr class="{{ 'muted-row' if not (v.created or v.done) }}">
+    <td><a href="{{ url_for(stats_endpoint, p='day', d=day.isoformat()) }}">{{ day.strftime("%d.%m") }}</a> <span class="muted">{{ weekday }}</span></td>
+    <td>{{ v.created }}</td><td>{{ v.done }}</td><td class="price">{{ v.sum | money }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if period.key == 'all' %}
+<h2>По месяцам</h2>
+{% if s.months %}
+<div class="table-wrap">
+<table class="data">
+  <thead><tr><th>Месяц</th><th>Создано</th><th>Выполнено</th><th>Сумма</th></tr></thead>
+  <tbody>
+  {% for month, m in s.months %}
+  <tr><td>{{ month | month_name }}</td><td>{{ m.created }}</td><td>{{ m.done }}</td><td class="price">{{ m.sum | money }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}<p class="muted">Заявок пока нет.</p>{% endif %}
+{% endif %}

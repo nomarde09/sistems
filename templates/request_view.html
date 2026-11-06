@@ -1,28 +1,40 @@
 {% extends "base.html" %}
 {% block title %}Заявка №{{ r.id }} — Заявки{% endblock %}
 {% block content %}
-<p class="back"><a href="{{ url_for('office_home') }}">← Все заявки</a></p>
+<p class="back"><a href="{{ url_for('office_home', status=r.status) }}">← {{ {'new': 'Новые', 'in_work': 'В работе', 'done': 'Выполнены', 'cancelled': 'Отменены'}[r.status] }}</a></p>
 
 {% if created %}<p class="notice">Заявка создана. Бригады увидят её в свободных.</p>{% endif %}
 
 <div class="page-head">
   <h1>Заявка №{{ r.id }}</h1>
   <div class="badges">
-    <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
+    {% include "_status_badge.html" %}
     {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+    {% if r.warranty %}<span class="badge warranty">Гарантия</span>{% endif %}
   </div>
 </div>
 
 <section class="card">
   <dl class="details">
     <dt>Клиент</dt><dd>{{ r.client_name }}</dd>
-    <dt>Телефон</dt><dd><a href="tel:{{ r.phone }}">{{ r.phone }}</a></dd>
+    <dt>Телефон</dt><dd><a href="tel:{{ r.phone | tel }}">{{ r.phone }}</a></dd>
     <dt>Адрес</dt><dd>{{ r.address }}</dd>
-    <dt>Что монтируем</dt><dd>{{ r.work_type }}</dd>
-    <dt>Договорились на</dt><dd>{{ (r.agreed_date | d) or "не указано" }}</dd>
+    <dt>Геолокация</dt><dd>{% if r.location %}<span class="location-text">{{ r.location }}</span>{% else %}не указана{% endif %}
+      {% include "_map.html" %}</dd>
+    {% include "_type_details.html" %}
+    <dt>Договорились на</dt><dd>{% if r.agreed_date %}{% include "_when.html" %}{% else %}не указано{% endif %}</dd>
     <dt>Что сделать</dt><dd class="multiline">{{ r.description }}</dd>
   </dl>
 </section>
+
+{% if r.status != 'cancelled' %}
+<form method="post" action="{{ url_for('request_warranty', request_id=r.id) }}" class="warranty-box">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <input type="hidden" name="warranty" value="{{ '0' if r.warranty else '1' }}">
+  <span>{% if r.warranty %}Заявка <strong>гарантийная</strong>.{% else %}Заявка <strong>платная</strong>.{% endif %}</span>
+  <button class="button" type="submit">{{ "Сделать платной" if r.warranty else "Сделать гарантийной" }}</button>
+</form>
+{% endif %}
 
 {% if r.status == 'cancelled' %}
 <section class="card cancelled-box">

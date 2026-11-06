@@ -4,15 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Заявки{% endblock %}</title>
+  <meta name="theme-color" content="#1f5fbf">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Заявки">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="{{ url_for('index') }}">Заявки</a>
-      {% if user %}
+      {% if user and request.blueprint != 'tech' %}
       <div class="who">
-        <span class="who-name">{{ user.name }}</span>
+        <span class="who-name" title="{{ user.name }}">{{ user.person }}</span>
         <form method="post" action="{{ url_for('logout') }}">
           <input type="hidden" name="csrf" value="{{ csrf_token() }}">
           <button class="link-button" type="submit">Выйти</button>
@@ -20,12 +26,17 @@
       </div>
       {% endif %}
     </div>
-    {% if user and user.role == 'brigade' %}
+    {% if user and user.role == 'brigade' and request.blueprint != 'tech' %}
     <nav class="tabs">
       <a href="{{ url_for('brigade_home') }}" class="{{ 'active' if request.endpoint == 'brigade_home' }}">
         Свободные <span class="count">{{ counts.free }}</span></a>
       <a href="{{ url_for('brigade_mine') }}" class="{{ 'active' if request.endpoint == 'brigade_mine' }}">
         Мои заявки <span class="count">{{ counts.mine }}</span></a>
+    </nav>
+    {% elif user and user.role == 'boss' and request.blueprint != 'tech' %}
+    <nav class="tabs">
+      <a href="{{ url_for('office_home') }}" class="{{ 'active' if request.endpoint != 'boss_stats' }}">Заявки</a>
+      <a href="{{ url_for('boss_stats') }}" class="{{ 'active' if request.endpoint == 'boss_stats' }}">Статистика</a>
     </nav>
     {% endif %}
   </header>

@@ -1,0 +1,5 @@
+{# Строки карточки: тип заявки, оборудование, гарантия (и старое «что монтируем»). Нужна: r #}
+<dt>Тип заявки</dt><dd>{{ REQUEST_TYPES.get(r.request_type, "не указан") }}</dd>
+<dt>Оборудование</dt><dd>{{ EQUIPMENT.get(r.equipment, "не указано") }}</dd>
+<dt>Гарантийная</dt><dd>{{ "да — бесплатно для клиента" if r.warranty else "нет, платная" }}</dd>
+{% if r.work_type %}<dt>Что монтируем</dt><dd>{{ r.work_type }}</dd>{% endif %}

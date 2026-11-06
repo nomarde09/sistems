@@ -5,7 +5,8 @@ from datetime import timedelta
 
 from test_app import GOOD_REQUEST, BrigadeHelpers, m
 
-REPORT = {"report_work": "Установили 4 камеры", "report_price": "85000", "report_comment": ""}
+REPORT = {"report_work": "Установили 4 камеры", "report_price": "85000",
+          "report_payment": "cash", "report_comment": ""}
 
 
 class BossHelpers(BrigadeHelpers):
@@ -168,17 +169,18 @@ class SearchTests(BossHelpers):
     def setUp(self):
         super().setUp()
         self.a = self.make_request(client_name="Анна Смирнова", address="ул. Садовая, 5",
-                                   phone="+7 701 555-12-34", work_type="Камеры")
+                                   phone="+7 701 555-12-34", equipment="kamery")
         self.b = self.done_request("brigada1", price="40000", client_name="ООО Ромашка",
-                                   address="пр. Мира, 12", phone="8 702 111 22 33", work_type="Ворота")
+                                   address="пр. Мира, 12", phone="8 702 111 22 33", equipment="vorota")
         self.c = self.done_request("brigada2", price="25 000", client_name="Пётр Иванов",
-                                   address="мкр. Самал, 3", phone="+77071234567", work_type="Домофон")
+                                   address="мкр. Самал, 3", phone="+77071234567", equipment="domofon")
         boss = self.client("rukovoditel")
         self.post(boss, "/ofis/novaya", {**GOOD_REQUEST, "client_name": "От руководителя",
                                          "address": "ул. Абая, 10", "phone": "+7 700 999 88 77"})
         self.office = self.client("manager2")
 
     def listing(self, **params):
+        params.setdefault("status", "all")
         return self.office.get("/ofis", query_string=params).text
 
     def shown(self, html):
@@ -188,7 +190,7 @@ class SearchTests(BossHelpers):
     def test_no_filters_shows_everything_and_total(self):
         html = self.listing()
         self.assertEqual(len(self.shown(html)), 4)
-        self.assertIn("Всего заявок: <strong>4</strong>", html)
+        self.assertRegex(html, r'Все <span class="count">4</span>')
         self.assertIn("Выполнено: <strong>2</strong> на сумму", html)
         self.assertIn("65 000", html)
 
@@ -235,6 +237,51 @@ class SearchTests(BossHelpers):
 
     def test_brigade_cannot_open_office_list(self):
         self.assertEqual(self.client("brigada1").get("/ofis?q=x").status_code, 302)
+
+
+class FullJourneyTest(BossHelpers):
+    """Весь путь заявки, как в жизни: менеджер → бригада → отчёт → руководитель находит."""
+
+    def test_whole_path(self):
+        manager = self.client("manager2")
+        r = self.post(manager, "/ofis/novaya", {**GOOD_REQUEST, "client_name": "Сквозная проверка",
+                                                "phone": "8 (705) 222-33-44"})
+        rid = int(r.location.split("/zayavka/")[1].split("?")[0])
+
+        b1, b2 = self.client("brigada1"), self.client("brigada2")
+        self.assertIn("Сквозная", b1.get(f"/brigada/zayavka/{rid}").text)
+        self.take(b2, rid)
+        page = b2.get(f"/brigada/zayavka/{rid}").text
+        self.assertIn('href="tel:87052223344"', page)
+        self.assertIn("Позвонить", page)
+        self.assertNotIn(f"/brigada/zayavka/{rid}/vzyat", b1.get("/brigada").text)
+
+        self.post(b2, f"/brigada/zayavka/{rid}/otchet",
+                  {"report_work": "Поставили 2 камеры", "report_price": "60 000", "report_payment": "kaspi_pay"}, page="/brigada/moi")
+
+        boss = self.client("rukovoditel")
+        html = boss.get("/ofis", query_string={"brigada": "brigada2", "period": "today"}).text
+        self.assertIn("Сквозная проверка", html)
+        self.assertIn("Найдено: <strong>1</strong>", html)
+        self.assertIn("60 000", html)
+        card = boss.get(f"/zayavka/{rid}").text
+        for text in ("Менеджер 2", "Бригада 2", "создал(а) заявку", "взял(а) в работу", "выполнил(а)",
+                     "Поставили 2 камеры"):
+            self.assertIn(text, card)
+        self.assertEqual([a for a, _ in self.actions(rid)], ["created", "taken", "done"])
+
+    def test_pages_have_phone_icon_and_manifest(self):
+        html = self.client("brigada1").get("/brigada").text
+        self.assertIn('rel="manifest"', html)
+        self.assertIn('rel="apple-touch-icon"', html)
+        c = m.app.test_client()
+        for path in ("/static/manifest.webmanifest", "/static/icon-192.png", "/static/apple-touch-icon.png"):
+            with c.get(path) as r:
+                self.assertEqual(r.status_code, 200, path)
+
+    def test_tel_link_format(self):
+        self.assertEqual(m.format_tel_link("8 (705) 222-33-44"), "87052223344")
+        self.assertEqual(m.format_tel_link("+7 701 555-12-34"), "+77015551234")
 
 
 if __name__ == "__main__":

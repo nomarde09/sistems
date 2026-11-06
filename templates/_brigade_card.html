@@ -4,10 +4,11 @@
     <div class="row-top">
       <span class="num">№{{ r.id }}</span>
       {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
-      <span class="row-day">{{ ("на " ~ (r.agreed_date | d)) if r.agreed_date else "день не назначен" }}</span>
+      {% if r.warranty %}<span class="badge warranty">Гарантия</span>{% endif %}
+      <span class="row-day">{% if r.agreed_date %}на {% include "_when.html" %}{% else %}день не назначен{% endif %}</span>
     </div>
-    <div class="row-main"><strong>{{ r.address }}</strong></div>
-    <div class="row-what">{{ r.work_type }}</div>
+    <div class="row-main"><strong>{{ r.address }}</strong>{% if r.location %}<span class="geo-mark">📍 на карте</span>{% endif %}</div>
+    <div class="row-what">{% include "_type_line.html" %}</div>
   </a>
   {% if show_take %}
   <form method="post" action="{{ url_for('brigade_take', request_id=r.id) }}">

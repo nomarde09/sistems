@@ -1,0 +1,13 @@
+{# Выбор способа оплаты. Нужны: data, errors #}
+<fieldset class="field {{ 'has-error' if errors.report_payment }}">
+  <legend>Как заплатил клиент <span class="muted">(не нужно, если цена 0)</span></legend>
+  <div class="pay-choice">
+    {% for key, label in PAYMENTS.items() %}
+    <label class="choice">
+      <input type="radio" name="report_payment" value="{{ key }}" {% if data.report_payment == key %}checked{% endif %}>
+      <span>{{ label }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  {% if errors.report_payment %}<span class="field-error">{{ errors.report_payment }}</span>{% endif %}
+</fieldset>

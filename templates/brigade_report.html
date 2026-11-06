@@ -4,7 +4,8 @@
 {% block content %}
 <p class="back"><a href="{{ url_for('brigade_request', request_id=r.id) }}">← Заявка №{{ r.id }}</a></p>
 <h1>Отчёт по заявке №{{ r.id }}</h1>
-<p class="muted">{{ r.address }} · {{ r.work_type }}</p>
+<p class="muted">{{ r.address }} · {% include "_type_line.html" %}</p>
+{% if r.warranty %}<p class="notice">Гарантийная заявка: клиент не платит. Если работа бесплатная, поставьте цену 0.</p>{% endif %}
 
 {% if errors %}<p class="alert">Проверьте поля, отмеченные красным.</p>{% endif %}
 
@@ -24,6 +25,8 @@
            autocomplete="off" placeholder="Например: 85000" required>
     {{ err('report_price') }}
   </label>
+
+  {% include "_payment_choice.html" %}
 
   <label class="field">
     <span>Комментарий <span class="muted">(необязательно)</span></span>

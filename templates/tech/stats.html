@@ -1,0 +1,18 @@
+{% extends "tech/layout.html" %}
+{% block tech_title %}Статистика{% endblock %}
+{% macro size(n) %}{% if n < 1024 %}{{ n }} Б{% elif n < 1048576 %}{{ "%.1f"|format(n / 1024) }} КБ{% else %}{{ "%.1f"|format(n / 1048576) }} МБ{% endif %}{% endmacro %}
+{% block tech_content %}
+<h1>Сквозная статистика</h1>
+
+{% include "_stats_body.html" %}
+
+<h2>Система</h2>
+<section class="card">
+  <dl class="details">
+    <dt>Сайт запущен</dt><dd>{{ system.started_at.strftime("%d.%m.%Y %H:%M") }}</dd>
+    <dt>Python</dt><dd>{{ system.python }}</dd>
+    <dt>База данных</dt><dd>{{ size(system.db_size) }}: заявок {{ system.requests }}, записей журнала {{ system.events }}</dd>
+    <dt>Лог приложения</dt><dd>{{ size(system.log_size) }}</dd>
+  </dl>
+</section>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "tech/layout.html" %}
+{% block tech_title %}Лог приложения{% endblock %}
+{% block tech_content %}
+<h1>Лог приложения</h1>
+
+<form method="get" class="card filters">
+  <div class="filter-row">
+    <label><span>Что показать</span>
+      <select name="only">
+        <option value="">всё</option>
+        <option value="logins" {% if only == 'logins' %}selected{% endif %}>только входы и выходы</option>
+        <option value="warnings" {% if only == 'warnings' %}selected{% endif %}>только предупреждения</option>
+      </select>
+    </label>
+    <label><span>Строк</span>
+      <select name="n">
+        {% for n in (100, 300, 1000, 5000) %}<option value="{{ n }}" {% if limit == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    <label><span>Содержит</span>
+      <input type="text" name="q" value="{{ q }}" placeholder="адрес, /ofis, 404…">
+    </label>
+  </div>
+  <div class="form-actions"><button class="button primary" type="submit">Показать</button></div>
+</form>
+
+<p class="summary">Файл {{ log_name }}, свежие строки сверху: <strong>{{ lines | length }}</strong>.</p>
+<pre class="log-view">{% for line in lines %}{{ line }}
+{% else %}Лог пуст.{% endfor %}</pre>
+{% endblock %}

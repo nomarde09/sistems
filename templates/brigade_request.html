@@ -11,17 +11,22 @@
   <div class="badges">
     <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
     {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+    {% if r.warranty %}<span class="badge warranty">Гарантия</span>{% endif %}
   </div>
 </div>
 
+{% if r.status in ('new', 'in_work') %}
+<div class="top-actions">{% include "_call.html" %}{% include "_map.html" %}</div>
+{% endif %}
+
 <section class="card">
   <dl class="details">
-    <dt>Адрес</dt><dd>{{ r.address }}</dd>
-    <dt>Договорились на</dt><dd>{{ (r.agreed_date | d) or "день не назначен" }}</dd>
-    <dt>Что монтируем</dt><dd>{{ r.work_type }}</dd>
+    <dt>Адрес</dt><dd>{{ r.address }}{% if r.location %}<br><span class="muted">есть точка на карте</span>{% endif %}</dd>
+    <dt>Договорились на</dt><dd>{% if r.agreed_date %}{% include "_when.html" %}{% else %}день не назначен{% endif %}</dd>
+    {% include "_type_details.html" %}
     <dt>Что сделать</dt><dd class="multiline">{{ r.description }}</dd>
     <dt>Клиент</dt><dd>{{ r.client_name }}</dd>
-    <dt>Телефон</dt><dd><a href="tel:{{ r.phone }}">{{ r.phone }}</a></dd>
+    <dt>Телефон</dt><dd><a href="tel:{{ r.phone | tel }}">{{ r.phone }}</a></dd>
     <dt>Заявку дал</dt><dd>{{ r.created_by | who }}</dd>
   </dl>
 </section>

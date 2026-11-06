@@ -258,3 +258,168 @@ a.button.wide { display: block; }
 .cancelled-box { margin-top: 16px; background: #f6f7f9; }
 .cancelled-box p { margin: 6px 0 0; }
 .form-section { margin: 8px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }
+
+/* ---- Удобство на телефоне (этап 6) ---- */
+/* Всё, на что нажимают пальцем, — не ниже 40px. */
+.brand { display: inline-flex; align-items: center; min-height: 40px; }
+.who .link-button {
+  min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px;
+  text-decoration: none; color: var(--text); background: var(--surface);
+}
+.back a { display: inline-flex; align-items: center; min-height: 40px; }
+.chip { min-height: 40px; padding: 8px 14px; }
+.tabs a { min-height: 44px; display: inline-flex; align-items: center; }
+.button { min-height: 44px; }
+summary.button { display: inline-flex; align-items: center; cursor: pointer; }
+/* Шрифт полей не меньше 16px — иначе iPhone увеличивает страницу при нажатии. */
+.filter-row select, .filters input { font-size: 16px; }
+
+/* Большая кнопка звонка */
+.call-button {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: #1e6b34; color: #fff; border-color: #1e6b34; font-size: 1.05rem;
+}
+.call-button:hover { filter: brightness(1.08); }
+.call-button svg { width: 20px; height: 20px; fill: currentColor; }
+.top-actions { display: grid; gap: 10px; margin: 0 0 16px; max-width: 480px; }
+
+/* Фильтры сворачиваются */
+.search-row { display: flex; gap: 8px; }
+.search-row .field { flex: 1; }
+.search-row .button { flex: none; }
+.more-filters summary {
+  cursor: pointer; color: var(--accent); font-weight: 600; min-height: 40px;
+  display: inline-flex; align-items: center; list-style: none;
+}
+.more-filters summary::-webkit-details-marker { display: none; }
+.more-filters summary::after { content: " ▾"; }
+.more-filters[open] summary::after { content: " ▴"; }
+.more-filters .filter-row { margin-top: 6px; }
+.filters .form-actions:empty { display: none; }
+
+/* В списке офиса «что монтируем» — отдельной строкой, а не справа */
+.row-what-office { color: var(--muted); font-size: 0.9rem; }
+
+@media (max-width: 560px) {
+  .page { padding-top: 16px; }
+  h1 { font-size: 1.3rem; }
+  .page-head .button.primary { width: 100%; }
+  .card { padding: 16px; }
+  .form-actions .button { flex: 1; }
+}
+
+/* Текст в кнопках-ссылках — по центру; на телефоне кнопки формы одна под другой */
+.button { display: inline-flex; align-items: center; justify-content: center; }
+a.button.wide, .button.wide { display: flex; }
+@media (max-width: 560px) {
+  .form-actions { flex-direction: column; }
+  .form-actions .button { width: 100%; }
+}
+
+/* Способ оплаты */
+.pay-choice { display: grid; gap: 8px; }
+.pay-choice .choice { min-height: 48px; font-weight: 500; }
+.has-error .pay-choice .choice { border-color: var(--danger); }
+.pay-summary { display: flex; gap: 4px 18px; flex-wrap: wrap; margin-top: -6px; }
+
+/* Вкладки статусов в офисе */
+.status-tabs {
+  display: flex; gap: 6px; margin: 0 0 12px; overflow-x: auto;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.status-tabs::-webkit-scrollbar { display: none; }
+.status-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px;
+  padding: 0 14px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); text-decoration: none; font-weight: 600;
+}
+.status-tab:hover { border-color: var(--accent); }
+.status-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.status-tab.active .count { background: rgba(255,255,255,0.25); color: #fff; }
+.status-tab.tab-in_work.active { background: #8a5a00; border-color: #8a5a00; }
+.status-tab.tab-done.active { background: #1e6b34; border-color: #1e6b34; }
+.status-tab.tab-cancelled.active { background: #646b75; border-color: #646b75; }
+/* На узком экране вкладки переносятся, чтобы все были видны сразу */
+.status-tabs { flex-wrap: wrap; overflow: visible; }
+@media (max-width: 560px) {
+  .status-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .status-tab { justify-content: center; padding: 0 8px; font-size: 0.9rem; }
+}
+@media (max-width: 560px) {
+  .status-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .status-tab { white-space: nowrap; padding: 0 6px; gap: 4px; font-size: 0.85rem; min-width: 0; }
+  .status-tab .count { min-width: 18px; padding: 0 4px; margin-left: 0; }
+}
+
+/* ---- Технический раздел ---- */
+.tech-bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+  margin: 0 0 16px; padding: 8px 12px; border-radius: var(--radius);
+  background: #1c1f24; color: #fff;
+}
+.tech-mark { font-weight: 600; font-size: 0.9rem; }
+.tech-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tech-nav a {
+  color: #cfd5de; text-decoration: none; padding: 0 10px; min-height: 40px;
+  display: inline-flex; align-items: center; border-radius: 6px;
+}
+.tech-nav a.active, .tech-nav a:hover { background: #343a43; color: #fff; }
+.tech-nav form { margin: 0; }
+.tech-nav .link-button { color: #cfd5de; border-color: #4a515c; background: transparent; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; display: grid; gap: 4px;
+}
+.stat-label { color: var(--muted); font-size: 0.85rem; }
+.stat-value { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+table.data { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.data th, table.data td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.data th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+table.data tr:last-child td { border-bottom: 0; }
+.nowrap { white-space: nowrap; }
+.log-view {
+  background: #1c1f24; color: #e3e7ee; padding: 12px; border-radius: var(--radius);
+  font: 12px/1.5 ui-monospace, Consolas, monospace; overflow-x: auto; max-height: 70vh; white-space: pre;
+}
+.field input.plain { letter-spacing: normal; }
+
+/* Геолокация */
+div.field { display: grid; gap: 6px; }
+div.field > label { font-weight: 500; }
+.field-hint { font-size: 0.85rem; font-weight: 400; }
+.map-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.map-button {
+  background: #fff7e6; color: #8a5a00; border-color: #f0c674; font-size: 1.05rem; gap: 8px;
+}
+.map-button svg { width: 20px; height: 20px; fill: currentColor; }
+.map-alt { font-size: 0.9rem; min-height: 40px; padding: 8px 12px; }
+.location-text { word-break: break-all; }
+.geo-mark { font-size: 0.85rem; color: #8a5a00; font-weight: 500; }
+
+/* Период статистики */
+.period-tabs { margin-bottom: 8px; }
+.day-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.day-pick label { color: var(--muted); font-size: 0.9rem; }
+.day-pick input[type=date] {
+  font: inherit; font-size: 16px; padding: 8px 10px; min-height: 44px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.period-caption { margin: 0 0 12px; color: var(--muted); }
+.period-caption strong { color: var(--text); }
+.stat-now { background: #f6f7f9; }
+tr.muted-row td { color: var(--muted); }
+
+/* Тип заявки и оборудование */
+.field select {
+  font: inherit; font-size: 16px; padding: 11px 12px; min-height: 44px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
+}
+.has-error select { border-color: var(--danger); }
+.two-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 16px; align-items: start; }
+.date-pick select[name=agreed_time] { min-width: 120px; }
+.badge.warranty { background: #e8f0ff; color: #2a4a8c; }
+.type-line { color: var(--muted); font-size: 0.9rem; }
+.warranty-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 16px; }
+.warranty-box form { margin: 0; }

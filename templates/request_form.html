@@ -34,15 +34,45 @@
     {{ err('address') }}
   </label>
 
-  <label class="field {{ 'has-error' if errors.work_type }}">
-    <span>Что монтируем</span>
-    <input type="text" name="work_type" value="{{ data.work_type }}" autocomplete="off"
-           placeholder="Например: 4 камеры и откатные ворота" required>
-    {{ err('work_type') }}
-  </label>
+  <div class="field {{ 'has-error' if errors.location }}">
+    <label for="location">Геолокация <span class="muted">(необязательно)</span></label>
+    <input type="text" id="location" name="location" value="{{ data.location or '' }}" autocomplete="off"
+           inputmode="url" placeholder="Ссылка на карту или координаты">
+    <div class="quick-dates">
+      <button type="button" class="chip" id="my-location">📍 Взять моё местоположение</button>
+    </div>
+    <span class="field-hint muted" id="location-hint">Скопируйте ссылку из 2ГИС, Яндекс или Google Карт, или ту, что прислал клиент в мессенджере.</span>
+    {{ err('location') }}
+  </div>
+
+  <div class="field-pair two-cols">
+    <label class="field {{ 'has-error' if errors.request_type }}">
+      <span>Тип заявки</span>
+      <select name="request_type" required>
+        <option value="">— выберите —</option>
+        {% for key, label in REQUEST_TYPES.items() %}
+        <option value="{{ key }}" {% if data.request_type == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {{ err('request_type') }}
+    </label>
+    <label class="field {{ 'has-error' if errors.equipment }}">
+      <span>Оборудование</span>
+      <select name="equipment" required>
+        <option value="">— выберите —</option>
+        {% for key, label in EQUIPMENT.items() %}
+        <option value="{{ key }}" {% if data.equipment == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      {{ err('equipment') }}
+    </label>
+  </div>
+  {% if edit and edit.work_type %}
+  <p class="field-hint muted">Раньше в заявке было записано «Что монтируем»: {{ edit.work_type }}</p>
+  {% endif %}
 
   <fieldset class="field {{ 'has-error' if errors.agreed_date }}">
-    <legend>На какой день договорились <span class="muted">(если уже известно)</span></legend>
+    <legend>На какой день и время договорились <span class="muted">(если уже известно)</span></legend>
     <div class="date-pick">
       <select name="agreed_day" aria-label="День">
         <option value="">— день —</option>
@@ -54,6 +84,12 @@
         {% set chosen_month = data.agreed_month or current_month %}
         {% for value, label in months %}
         <option value="{{ value }}" {% if value == chosen_month %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="agreed_time" aria-label="Время">
+        <option value="">— время —</option>
+        {% for t in AGREED_TIMES %}
+        <option value="{{ t }}" {% if data.agreed_time == t %}selected{% endif %}>{{ t }}</option>
         {% endfor %}
       </select>
     </div>
@@ -70,6 +106,13 @@
     <input type="checkbox" name="urgent" value="1" {% if data.urgent %}checked{% endif %}>
     <span>Срочная заявка</span>
   </label>
+
+  {% if edit %}
+  <label class="check">
+    <input type="checkbox" name="warranty" value="1" {% if data.warranty %}checked{% endif %}>
+    <span>Гарантийная заявка</span>
+  </label>
+  {% endif %}
 
   <label class="field {{ 'has-error' if errors.description }}">
     <span>Что нужно сделать</span>
@@ -92,6 +135,8 @@
     {{ err('report_price') }}
   </label>
 
+  {% include "_payment_choice.html" %}
+
   <label class="field">
     <span>Комментарий <span class="muted">(необязательно)</span></span>
     <textarea name="report_comment" rows="2">{{ data.report_comment }}</textarea>
@@ -104,11 +149,36 @@
   </div>
 </form>
 <script>
+  // «Взять моё местоположение»: телефон спрашивает разрешение и подставляет координаты.
+  (function () {
+    var button = document.getElementById('my-location');
+    var field = document.getElementById('location');
+    var hint = document.getElementById('location-hint');
+    if (!button) return;
+    button.addEventListener('click', function () {
+      if (!window.isSecureContext || !navigator.geolocation) {
+        hint.textContent = 'Телефон даёт местоположение только на защищённом адресе (https). ' +
+          'Пока вставьте ссылку на карту вручную — после запуска в интернете кнопка заработает.';
+        return;
+      }
+      hint.textContent = 'Определяем местоположение…';
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        field.value = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        hint.textContent = 'Готово. Точность около ' + Math.round(pos.coords.accuracy) + ' м.';
+      }, function (err) {
+        hint.textContent = err.code === 1
+          ? 'Доступ к местоположению запрещён. Разрешите его в настройках браузера или вставьте ссылку вручную.'
+          : 'Не удалось определить местоположение. Попробуйте ещё раз или вставьте ссылку вручную.';
+      }, {enableHighAccuracy: true, timeout: 15000});
+    });
+  })();
+
   // Кнопки «Сегодня», «Завтра»... сами выставляют день и месяц.
-  document.querySelectorAll('.quick-dates .chip').forEach(function (btn) {
+  document.querySelectorAll('.quick-dates .chip[data-month]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var form = btn.form;
       form.agreed_day.value = btn.dataset.day;
+      if (!btn.dataset.day) form.agreed_time.value = '';  // «Не знаем» очищает и время
       form.agreed_month.value = btn.dataset.month;
     });
   });

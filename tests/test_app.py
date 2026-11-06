@@ -6,11 +6,20 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from pathlib import Path
 
 # Каждый запуск — с чистой временной базой, рабочая база не трогается.
-_tmp = tempfile.TemporaryDirectory()
+_tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)  # лог может быть ещё открыт
 os.environ["DATABASE_PATH"] = str(Path(_tmp.name) / "test.db")
+# Свой логин суперадмина для проверок (значения из окружения важнее .env).
+os.environ["SUPERADMIN_LOGIN"] = "tech-test"
+os.environ["SUPERADMIN_PASSWORD"] = "test-password-123"
+# Логины, имена и пароли в проверках — свои, независимо от рабочего .env.
+for _n, _uid in enumerate(("RUKOVODITEL", "MANAGER1", "MANAGER2", "BRIGADA1", "BRIGADA2"), 1):
+    os.environ[f"LOGIN_{_uid}"] = ""
+    os.environ[f"NAME_{_uid}"] = ""
+    os.environ[f"PIN_{_uid}"] = f"{_n}{_n}{_n}9"
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import app as m  # noqa: E402
@@ -22,7 +31,8 @@ GOOD_REQUEST = {
     "client_name": "Иван Петров",
     "phone": "+7 900 123-45-67",
     "address": "ул. Садовая, 5",
-    "work_type": "4 камеры по периметру",
+    "request_type": "montazh",
+    "equipment": "kamery",
     "agreed_day": "20", "agreed_month": "2026-11",
     "urgent": "1",
     "description": "Поставить 4 камеры\nвокруг дома",
@@ -42,13 +52,14 @@ class Base(unittest.TestCase):
             db.execute("DELETE FROM events")
             db.execute("DELETE FROM requests")
             db.commit()
+        m._login_fails.clear()
 
     def client(self, user_id=None):
         c = m.app.test_client()
         if user_id:
             token = csrf_from(c.get("/vhod").text)
             pin = os.environ[m.pin_env_name(user_id)]
-            r = c.post("/vhod", data={"csrf": token, "user_id": user_id, "pin": pin})
+            r = c.post("/vhod", data={"csrf": token, "login": m.login_of(user_id), "password": pin})
             self.assertEqual(r.status_code, 302, f"не удалось войти как {user_id}")
         return c
 
@@ -65,16 +76,87 @@ class LoginTests(Base):
             self.assertEqual(r.status_code, 302, url)
             self.assertIn("/vhod", r.location, url)
 
-    def test_login_page_lists_everyone(self):
+    def test_login_page_has_only_login_and_password(self):
         html = m.app.test_client().get("/vhod").text
-        for u in m.USERS.values():
-            self.assertIn(u["name"], html)
+        self.assertIn('name="login"', html)
+        self.assertIn('name="password"', html)
+        for uid, u in m.USERS.items():  # никого не перечисляем: ни имён, ни логинов
+            self.assertNotIn(u["name"], html)
+            self.assertNotIn(uid, html)
+        self.assertNotIn('type="radio"', html)
+
+    def test_login_ignores_case_and_spaces(self):
+        c = m.app.test_client()
+        pin = os.environ[m.pin_env_name("manager1")]
+        r = self.post(c, "/vhod", {"login": "  MANAGER1 ", "password": pin})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("Менеджер 1", c.get("/", follow_redirects=True).text)
+
+    def test_login_names_can_be_changed_in_env(self):
+        pin = os.environ[m.pin_env_name("brigada1")]
+        with unittest.mock.patch.dict(os.environ, {"LOGIN_BRIGADA1": "Ivan"}):
+            c = m.app.test_client()
+            self.assertEqual(self.post(c, "/vhod", {"login": "ivan", "password": pin}).status_code, 302)
+            old = m.app.test_client()
+            self.assertIn("Неверный", self.post(old, "/vhod", {"login": "brigada1", "password": pin}).text)
+
+    def test_russian_logins(self):
+        logins = {"LOGIN_RUKOVODITEL": "фарух", "LOGIN_MANAGER1": "яна", "LOGIN_MANAGER2": "умида",
+                  "LOGIN_BRIGADA1": "иван", "LOGIN_BRIGADA2": "жахонгир"}
+        with unittest.mock.patch.dict(os.environ, logins):
+            for uid, typed in (("rukovoditel", "Фарух"), ("manager1", "ЯНА"), ("manager2", " умида "),
+                               ("brigada1", "Иван"), ("brigada2", "Жахонгир")):
+                with self.subTest(login=typed):
+                    c = m.app.test_client()
+                    r = self.post(c, "/vhod", {"login": typed, "password": os.environ[m.pin_env_name(uid)]})
+                    self.assertEqual(r.status_code, 302)
+                    self.assertIn(m.USERS[uid]["name"], c.get("/", follow_redirects=True).text)
+            old = m.app.test_client()
+            r = self.post(old, "/vhod", {"login": "rukovoditel",
+                                         "password": os.environ[m.pin_env_name("rukovoditel")]})
+            self.assertIn("Неверный логин или пароль", r.text)
+            self.assertIn('value="Фарух"', self.post(m.app.test_client(), "/vhod",
+                                                     {"login": "Фарух", "password": "неверно"}).text)
+
+    def test_header_shows_person_name(self):
+        names = {"NAME_RUKOVODITEL": "Фарух", "NAME_BRIGADA1": "Иван"}
+        with unittest.mock.patch.dict(os.environ, names):
+            boss = self.client("rukovoditel")
+            html = boss.get("/ofis").text
+            self.assertIn('class="who-name" title="Руководитель">Фарух<', html)
+            brigade = self.client("brigada1").get("/brigada").text
+            self.assertIn('>Иван</span>', brigade)
+            # без имени в .env — показывается должность
+            self.assertIn('title="Менеджер 1">Менеджер 1<', self.client("manager1").get("/ofis").text)
+            # в журнале заявки тоже имя
+            r = self.post(boss, "/ofis/novaya", {**GOOD_REQUEST})
+            self.assertIn("<strong>Фарух</strong> — создал(а) заявку", boss.get(r.location).text)
+
+    def test_someone_elses_password_does_not_work(self):
+        c = m.app.test_client()
+        other_pin = os.environ[m.pin_env_name("brigada1")]
+        if other_pin != os.environ[m.pin_env_name("rukovoditel")]:
+            r = self.post(c, "/vhod", {"login": "rukovoditel", "password": other_pin})
+            self.assertIn("Неверный логин или пароль", r.text)
+
+    def test_lockout_after_5_wrong_passwords(self):
+        c = m.app.test_client()
+        pin = os.environ[m.pin_env_name("manager2")]
+        bad = "0000" if pin != "0000" else "1111"
+        for _ in range(m.LOGIN_MAX_FAILS):
+            self.post(c, "/vhod", {"login": "manager2", "password": bad})
+        r = self.post(c, "/vhod", {"login": "manager2", "password": pin})
+        self.assertIn("Слишком много неверных попыток", r.text)
+        # другой логин с того же устройства не блокируется
+        ok = self.post(c, "/vhod", {"login": "manager1",
+                                    "password": os.environ[m.pin_env_name("manager1")]})
+        self.assertEqual(ok.status_code, 302)
 
     def test_each_user_logs_in_and_out(self):
         for uid, u in m.USERS.items():
             with self.subTest(user=u["name"]):
                 c = self.client(uid)
-                home = "Свободные заявки" if u["role"] == "brigade" else "Все заявки"
+                home = "Свободные заявки" if u["role"] == "brigade" else "+ Новая заявка"
                 page = c.get("/", follow_redirects=True).text
                 self.assertIn(home, page)
                 self.assertIn(u["name"], page)
@@ -88,18 +170,20 @@ class LoginTests(Base):
         for uid in m.USERS:
             pin = os.environ[m.pin_env_name(uid)]
             bad = "0000" if pin != "0000" else "1111"
-            r = self.post(c, "/vhod", {"user_id": uid, "pin": bad})
-            self.assertIn("Неверный пароль", r.text)
+            r = self.post(c, "/vhod", {"login": m.login_of(uid), "password": bad})
+            self.assertIn("Неверный логин или пароль", r.text)
+            self.assertIn(f'value="{m.login_of(uid)}"', r.text)  # логин не стирается
 
-    def test_unknown_user_and_empty_choice(self):
+    def test_unknown_user_and_empty_fields(self):
         c = m.app.test_client()
-        self.assertIn("Неверный", self.post(c, "/vhod", {"user_id": "hacker", "pin": ""}).text)
-        self.assertIn("Выберите", self.post(c, "/vhod", {"pin": "1234"}).text)
+        self.assertIn("Неверный", self.post(c, "/vhod", {"login": "hacker", "password": "1234"}).text)
+        self.assertIn("Введите логин и пароль", self.post(c, "/vhod", {"password": "1234"}).text)
+        self.assertIn("Введите логин и пароль", self.post(c, "/vhod", {"login": "manager1"}).text)
 
     def test_form_without_csrf_refused(self):
         c = m.app.test_client()
         uid = OFFICE[0]
-        r = c.post("/vhod", data={"user_id": uid, "pin": os.environ[m.pin_env_name(uid)]})
+        r = c.post("/vhod", data={"login": uid, "password": os.environ[m.pin_env_name(uid)]})
         self.assertEqual(r.status_code, 400)
 
 
@@ -128,11 +212,11 @@ class CreateRequestTests(Base):
         c = self.client("manager2")
         self.post(c, "/ofis/novaya", GOOD_REQUEST)
         self.post(c, "/ofis/novaya", {**GOOD_REQUEST, "client_name": "ООО Ромашка",
-                                      "work_type": "Ворота откатные", "urgent": ""})
+                                      "request_type": "remont", "equipment": "vorota", "urgent": ""})
         page = self.client("rukovoditel").get("/ofis").text
         self.assertIn("Иван Петров", page)
         self.assertIn("ООО Ромашка", page)
-        self.assertIn("Ворота откатные", page)
+        self.assertIn("Ремонт / неисправность · Автоматика ворот / шлагбаум", page)
         self.assertIn("Создал: Менеджер 2", page)
 
     def test_empty_form_shows_errors_and_saves_nothing(self):
@@ -140,7 +224,7 @@ class CreateRequestTests(Base):
         r = self.post(c, "/ofis/novaya", {})
         self.assertEqual(r.status_code, 200)
         for text in ("Укажите имя клиента", "Укажите телефон", "Укажите адрес",
-                     "Напишите, что монтируем", "Опишите"):
+                     "Выберите тип заявки", "Выберите оборудование", "Опишите"):
             self.assertIn(text, r.text)
         with m.app.app_context():
             self.assertEqual(m.get_db().execute("SELECT COUNT(*) FROM requests").fetchone()[0], 0)
@@ -173,12 +257,14 @@ class CreateRequestTests(Base):
         self.assertNotIn("<script>alert(1)</script>", page)
         self.assertIn("&lt;script&gt;", page)
 
-    def test_work_type_is_free_text(self):
+    def test_type_and_equipment_are_required_choices(self):
         c = self.client("manager1")
-        r = self.post(c, "/ofis/novaya", {**GOOD_REQUEST, "work_type": "Домофон и 2 камеры у подъезда"})
-        self.assertIn("Домофон и 2 камеры у подъезда", c.get(r.location).text)
-        self.assertIn("Напишите, что монтируем",
-                      self.post(c, "/ofis/novaya", {**GOOD_REQUEST, "work_type": "   "}).text)
+        for field, text in (("request_type", "Выберите тип заявки"), ("equipment", "Выберите оборудование")):
+            for bad in ("", "чужое"):
+                with self.subTest(field=field, value=bad):
+                    self.assertIn(text, self.post(c, "/ofis/novaya", {**GOOD_REQUEST, field: bad}).text)
+        with m.app.app_context():
+            self.assertEqual(m.get_db().execute("SELECT COUNT(*) FROM requests").fetchone()[0], 0)
 
     def test_old_choice_values_become_text(self):
         with m.app.app_context():
@@ -327,7 +413,7 @@ class BrigadeTests(BrigadeHelpers):
         self.assertEqual(self.actions(rid), [("created", "manager1"), ("taken", "brigada1"),
                                              ("returned", "brigada1"), ("taken", "brigada2")])
         history = self.client("rukovoditel").get(f"/zayavka/{rid}").text
-        self.assertIn("вернула в свободные", history)
+        self.assertIn("вернул(а) в свободные", history)
 
     def test_cannot_return_someone_elses_request(self):
         rid = self.make_request()
@@ -365,7 +451,8 @@ class BrigadeTests(BrigadeHelpers):
 
 class ReportTests(BrigadeHelpers):
     GOOD_REPORT = {"report_work": "Установили 4 камеры\nНастроили запись",
-                   "report_price": "85 000 тг", "report_comment": "Клиент доволен"}
+                   "report_price": "85 000 тг", "report_payment": "kaspi_transfer",
+                   "report_comment": "Клиент доволен"}
 
     def taken_request(self, brigade="brigada1", **fields):
         rid = self.make_request(**fields)
@@ -401,10 +488,10 @@ class ReportTests(BrigadeHelpers):
         boss = self.client("rukovoditel")
         page = boss.get(f"/zayavka/{rid}").text
         for text in ("Выполнена", "Установили 4 камеры", "85 000", "Клиент доволен",
-                     "Бригада 1", "выполнила"):
+                     "Бригада 1", "выполнил(а)"):
             self.assertIn(text, page)
-        listing = boss.get("/ofis").text
-        self.assertIn("Выполнена " + m.now_local().strftime("%d.%m.%Y"), listing)
+        listing = boss.get("/ofis?status=done").text
+        self.assertIn("Выполнил(а) Бригада 1 " + m.now_local().strftime("%d.%m.%Y"), listing)
         self.assertIn("85 000", listing)
 
     def test_report_requires_work_and_price(self):

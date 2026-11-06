@@ -1,0 +1,6 @@
+{# «Ремонт / неисправность · Домофон». У старых заявок — их «что монтируем». Нужна: r #}
+{%- if r.request_type or r.equipment -%}
+{{ REQUEST_TYPES.get(r.request_type, "тип не указан") }} · {{ EQUIPMENT.get(r.equipment, "оборудование не указано") }}
+{%- else -%}
+{{ r.work_type }}
+{%- endif -%}
