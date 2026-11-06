@@ -24,6 +24,8 @@
   </dl>
 </section>
 
+{% if r.status == 'done' %}{% include "_report.html" %}{% endif %}
+
 <h2>История</h2>
 <section class="card">
   <ol class="history">

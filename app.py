@@ -310,6 +310,14 @@ def month_options():
     return options
 
 
+@app.template_filter("money")
+def format_money(value):
+    """15000 → «15 000» (с неразрывным пробелом)."""
+    if value is None:
+        return ""
+    return f"{value:,}".replace(",", " ")
+
+
 @app.template_filter("who")
 def format_user(user_id):
     return USERS.get(user_id, {}).get("name", user_id or "")
@@ -487,11 +495,17 @@ def brigade_home():
 @app.route("/brigada/moi")
 @login_required("brigade")
 def brigade_mine():
-    rows = get_db().execute(
+    db, user_id = get_db(), current_user()["id"]
+    rows = db.execute(
         f"SELECT * FROM requests WHERE status = 'in_work' AND taken_by = ? ORDER BY {FREE_ORDER}",
-        (current_user()["id"],),
+        (user_id,),
     ).fetchall()
-    return render_template("brigade_mine.html", requests=rows)
+    done = db.execute(
+        """SELECT * FROM requests WHERE status = 'done' AND taken_by = ?
+           ORDER BY done_at DESC LIMIT 20""",
+        (user_id,),
+    ).fetchall()
+    return render_template("brigade_mine.html", requests=rows, done=done)
 
 
 @app.route("/brigada/zayavka/<int:request_id>")
@@ -547,6 +561,56 @@ def brigade_return(request_id):
     db.commit()
     flash(f"Заявка №{request_id} возвращена в свободные.", "ok")
     return redirect(url_for("brigade_mine"))
+
+
+def parse_price(text):
+    """«15 000», «15000 тг», «15.000» → 15000. Пусто или без цифр → None."""
+    digits = "".join(ch for ch in text if ch.isdigit())
+    return int(digits) if digits else None
+
+
+@app.route("/brigada/zayavka/<int:request_id>/otchet", methods=["GET", "POST"])
+@login_required("brigade")
+def brigade_report(request_id):
+    row = get_request_or_404(request_id)
+    user_id = current_user()["id"]
+    if row["status"] != "in_work" or row["taken_by"] != user_id:
+        flash("Отчёт можно написать только по своей заявке в работе.", "error")
+        return redirect(url_for("brigade_mine"))
+
+    data, errors = {}, {}
+    if request.method == "POST":
+        data = {
+            "report_work": request.form.get("report_work", "").strip(),
+            "report_price": request.form.get("report_price", "").strip(),
+            "report_comment": request.form.get("report_comment", "").strip(),
+        }
+        price = parse_price(data["report_price"])
+        if not data["report_work"]:
+            errors["report_work"] = "Напишите, что сделали."
+        if price is None:
+            errors["report_price"] = "Укажите цену цифрами."
+        elif price > 100_000_000:
+            errors["report_price"] = "Слишком большая сумма, проверьте."
+        if not errors:
+            db = get_db()
+            at = now_local().isoformat()
+            cur = db.execute(
+                """UPDATE requests SET status = 'done', done_at = ?, report_work = ?,
+                          report_price = ?, report_comment = ?, updated_at = ?
+                   WHERE id = ? AND status = 'in_work' AND taken_by = ?""",
+                (at, data["report_work"], price, data["report_comment"] or None, at,
+                 request_id, user_id),
+            )
+            if cur.rowcount == 0:
+                db.rollback()
+                flash("Не получилось сохранить: заявка уже не у вас в работе.", "error")
+                return redirect(url_for("brigade_mine"))
+            log_event(db, request_id, "done", user_id, at)
+            db.commit()
+            flash(f"Отчёт сохранён. Заявка №{request_id} выполнена.", "ok")
+            return redirect(url_for("brigade_mine"))
+    return render_template("brigade_report.html", r=row, data=data, errors=errors)
 
 
 @app.errorhandler(400)

@@ -226,3 +226,11 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; }
 .history li { display: flex; gap: 4px 16px; flex-wrap: wrap; }
 .history .when { color: var(--muted); min-width: 130px; font-variant-numeric: tabular-nums; }
 .event-returned strong, .event-cancelled strong { color: var(--danger); }
+
+/* Отчёт и цены */
+.price { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row-main .price { margin-left: auto; }
+.done-meta { color: #1e6b34; }
+.report { border-color: #b7dfc3; }
+.request-list.compact .request-row { padding: 10px 14px; }
+a.button.wide { display: block; }

@@ -33,7 +33,8 @@
     <button class="button primary wide" type="submit">Взять заявку</button>
   </form>
   {% elif mine and r.status == 'in_work' %}
-  <p class="muted">Вы взяли эту заявку {{ r.taken_at | dt }}. Отчёт о выполнении появится на следующем этапе.</p>
+  <p class="muted">Вы взяли эту заявку {{ r.taken_at | dt }}.</p>
+  <a class="button primary wide" href="{{ url_for('brigade_report', request_id=r.id) }}">Работа сделана — написать отчёт</a>
   <form method="post" action="{{ url_for('brigade_return', request_id=r.id) }}"
         onsubmit="return confirm('Вернуть заявку №{{ r.id }} в свободные? Её сможет взять другая бригада.');">
     <input type="hidden" name="csrf" value="{{ csrf_token() }}">
@@ -41,4 +42,8 @@
   </form>
   {% endif %}
 </div>
+
+{% if mine and r.status == 'done' %}
+{% include "_report.html" %}
+{% endif %}
 {% endblock %}

@@ -25,6 +25,7 @@
         {% if r.agreed_date %}<span>На {{ r.agreed_date | d }}</span>{% endif %}
         <span>Создал: {{ r.created_by | who }}, {{ r.created_at | dt }}</span>
         {% if r.taken_by %}<span>Взяла: {{ r.taken_by | who }}</span>{% endif %}
+        {% if r.status == 'done' %}<span class="done-meta">Выполнена {{ r.done_at | dt }} · <span class="price">{{ r.report_price | money }}</span></span>{% endif %}
       </div>
     </a>
   </li>

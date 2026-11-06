@@ -231,7 +231,9 @@ class CreateRequestTests(Base):
         self.assertEqual(self.client("manager1").get("/zayavka/999").status_code, 404)
 
 
-class BrigadeTests(Base):
+class BrigadeHelpers(Base):
+    """Общие действия бригад для проверок; своих проверок не содержит."""
+
     def make_request(self, **fields):
         c = self.client("manager1")
         r = self.post(c, "/ofis/novaya", {**GOOD_REQUEST, **fields})
@@ -252,6 +254,8 @@ class BrigadeTests(Base):
             return [(e["action"], e["user_id"]) for e in m.get_db().execute(
                 "SELECT * FROM events WHERE request_id = ? ORDER BY id", (rid,))]
 
+
+class BrigadeTests(BrigadeHelpers):
     def test_free_list_shows_new_requests_with_take_button(self):
         rid = self.make_request(address="ул. Лесная, 1")
         html = self.client("brigada1").get("/brigada").text
@@ -356,6 +360,96 @@ class BrigadeTests(Base):
         c = self.client("manager1")
         self.post(c, f"/brigada/zayavka/{rid}/vzyat", {}, page="/ofis")
         self.assertEqual(self.row(rid)["status"], "new")
+
+
+
+class ReportTests(BrigadeHelpers):
+    GOOD_REPORT = {"report_work": "Установили 4 камеры\nНастроили запись",
+                   "report_price": "85 000 тг", "report_comment": "Клиент доволен"}
+
+    def taken_request(self, brigade="brigada1", **fields):
+        rid = self.make_request(**fields)
+        c = self.client(brigade)
+        self.take(c, rid)
+        return rid, c
+
+    def report(self, c, rid, data):
+        url = f"/brigada/zayavka/{rid}/otchet"
+        return self.post(c, url, data, page="/brigada/moi")
+
+    def test_report_marks_done_with_date_and_price(self):
+        rid, c = self.taken_request(address="ул. Лесная, 1")
+        self.assertIn("написать отчёт", c.get(f"/brigada/zayavka/{rid}").text)
+        r = self.report(c, rid, self.GOOD_REPORT)
+        self.assertEqual(r.status_code, 302)
+        row = self.row(rid)
+        self.assertEqual(row["status"], "done")
+        self.assertEqual(row["report_price"], 85000)
+        self.assertEqual(row["report_work"], "Установили 4 камеры\nНастроили запись")
+        self.assertEqual(row["report_comment"], "Клиент доволен")
+        self.assertTrue(row["done_at"].startswith(m.now_local().date().isoformat()))
+        self.assertEqual(self.actions(rid)[-1], ("done", "brigada1"))
+        mine = c.get("/brigada/moi").text
+        self.assertIn("Отчёт сохранён", mine)
+        self.assertIn("Выполненные недавно", mine)
+        self.assertIn("85 000", mine)
+        self.assertNotIn(f"/brigada/zayavka/{rid}/otchet", mine)
+
+    def test_office_sees_report(self):
+        rid, c = self.taken_request()
+        self.report(c, rid, self.GOOD_REPORT)
+        boss = self.client("rukovoditel")
+        page = boss.get(f"/zayavka/{rid}").text
+        for text in ("Выполнена", "Установили 4 камеры", "85 000", "Клиент доволен",
+                     "Бригада 1", "выполнила"):
+            self.assertIn(text, page)
+        listing = boss.get("/ofis").text
+        self.assertIn("Выполнена " + m.now_local().strftime("%d.%m.%Y"), listing)
+        self.assertIn("85 000", listing)
+
+    def test_report_requires_work_and_price(self):
+        rid, c = self.taken_request()
+        r = self.report(c, rid, {"report_work": "", "report_price": "дорого"})
+        self.assertIn("Напишите, что сделали", r.text)
+        self.assertIn("Укажите цену цифрами", r.text)
+        self.assertEqual(self.row(rid)["status"], "in_work")
+        r = self.report(c, rid, {"report_work": "Сделали", "report_price": ""})
+        self.assertIn("Укажите цену", r.text)
+        self.assertIn("Сделали", r.text)  # введённое не теряется
+
+    def test_comment_is_optional_and_zero_price_allowed(self):
+        rid, c = self.taken_request()
+        self.report(c, rid, {"report_work": "Гарантийный ремонт", "report_price": "0"})
+        row = self.row(rid)
+        self.assertEqual((row["status"], row["report_price"], row["report_comment"]), ("done", 0, None))
+
+    def test_only_own_in_work_request_can_be_reported(self):
+        rid, _ = self.taken_request("brigada1")
+        b2 = self.client("brigada2")
+        self.report(b2, rid, self.GOOD_REPORT)
+        self.assertEqual(self.row(rid)["status"], "in_work")
+        free = self.make_request()
+        self.report(b2, free, self.GOOD_REPORT)
+        self.assertEqual(self.row(free)["status"], "new")
+
+    def test_done_request_cannot_be_reported_or_returned_again(self):
+        rid, c = self.taken_request()
+        self.report(c, rid, self.GOOD_REPORT)
+        self.report(c, rid, {**self.GOOD_REPORT, "report_price": "1"})
+        self.give_back(c, rid)
+        row = self.row(rid)
+        self.assertEqual((row["status"], row["report_price"]), ("done", 85000))
+        self.assertEqual(sum(a == "done" for a, _ in self.actions(rid)), 1)
+
+    def test_done_request_not_in_free_list(self):
+        rid, c = self.taken_request(address="ул. Лесная, 1")
+        self.report(c, rid, self.GOOD_REPORT)
+        self.assertNotIn("ул. Лесная, 1", self.client("brigada2").get("/brigada").text)
+
+    def test_parse_price(self):
+        for text, value in (("85000", 85000), ("85 000", 85000), ("85.000 тг", 85000),
+                            ("0", 0), ("", None), ("нет", None)):
+            self.assertEqual(m.parse_price(text), value, text)
 
 
 if __name__ == "__main__":

@@ -13,4 +13,22 @@
   <p class="muted">Возьмите заявку во вкладке «Свободные».</p>
 </section>
 {% endif %}
+
+{% if done %}
+<h2>Выполненные недавно</h2>
+<ul class="request-list compact">
+  {% for r in done %}
+  <li>
+    <a class="request-row" href="{{ url_for('brigade_request', request_id=r.id) }}">
+      <div class="row-top">
+        <span class="num">№{{ r.id }}</span>
+        <span class="badge status-done">Выполнена</span>
+        <span class="row-day">{{ r.done_at | dt }}</span>
+      </div>
+      <div class="row-main"><strong>{{ r.address }}</strong><span class="price">{{ r.report_price | money }}</span></div>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
 {% endblock %}

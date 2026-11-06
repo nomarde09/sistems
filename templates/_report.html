@@ -1,0 +1,10 @@
+{# Отчёт бригады о выполнении. Нужна: r #}
+<h2>Отчёт</h2>
+<section class="card report">
+  <dl class="details">
+    <dt>Выполнила</dt><dd>{{ r.taken_by | who }}, {{ r.done_at | dt }}</dd>
+    <dt>Что сделано</dt><dd class="multiline">{{ r.report_work }}</dd>
+    <dt>Цена</dt><dd class="price">{{ r.report_price | money }}</dd>
+    {% if r.report_comment %}<dt>Комментарий</dt><dd class="multiline">{{ r.report_comment }}</dd>{% endif %}
+  </dl>
+</section>
