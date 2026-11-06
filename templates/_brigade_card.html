@@ -1,0 +1,18 @@
+{# Карточка заявки в списках бригады. Нужны: r, show_take #}
+<li class="request-row brigade-row">
+  <a class="row-link" href="{{ url_for('brigade_request', request_id=r.id) }}">
+    <div class="row-top">
+      <span class="num">№{{ r.id }}</span>
+      {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+      <span class="row-day">{{ ("на " ~ (r.agreed_date | d)) if r.agreed_date else "день не назначен" }}</span>
+    </div>
+    <div class="row-main"><strong>{{ r.address }}</strong></div>
+    <div class="row-what">{{ r.work_type }}</div>
+  </a>
+  {% if show_take %}
+  <form method="post" action="{{ url_for('brigade_take', request_id=r.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="button primary wide" type="submit">Взять</button>
+  </form>
+  {% endif %}
+</li>

@@ -1,8 +1,16 @@
 {% extends "base.html" %}
+{% block title %}Свободные заявки — Заявки{% endblock %}
 {% block content %}
 <h1>Свободные заявки</h1>
+
+{% if requests %}
+<ul class="request-list">
+  {% for r in requests %}{% set show_take = true %}{% include "_brigade_card.html" %}{% endfor %}
+</ul>
+{% else %}
 <section class="card empty">
-  <p>Вы вошли как <strong>{{ user.name }}</strong>.</p>
-  <p class="muted">Здесь будут свободные заявки и кнопка «Взять» (этап 3).</p>
+  <p>Свободных заявок нет.</p>
+  <p class="muted">Когда офис создаст новую заявку, она появится здесь.</p>
 </section>
+{% endif %}
 {% endblock %}

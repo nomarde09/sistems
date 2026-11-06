@@ -11,6 +11,7 @@ from pathlib import Path
 from flask import (
     Flask,
     abort,
+    flash,
     g,
     redirect,
     render_template,
@@ -120,7 +121,26 @@ CREATE TABLE IF NOT EXISTS requests (
     cancelled_at   TEXT,
     updated_at     TEXT
 );
+
+-- Журнал: кто что делал с заявкой и когда.
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id  INTEGER NOT NULL REFERENCES requests(id),
+    action      TEXT NOT NULL,      -- см. EVENT_LABELS
+    user_id     TEXT NOT NULL,
+    at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_by_request ON events(request_id);
 """
+
+EVENT_LABELS = {
+    "created": "Создал(а) заявку",
+    "taken": "Взяла в работу",
+    "returned": "Вернула в свободные",
+    "done": "Выполнила",
+    "edited": "Исправил(а) заявку",
+    "cancelled": "Отменил(а) заявку",
+}
 
 
 def get_db():
@@ -144,6 +164,12 @@ def init_db():
         db.executescript(SCHEMA)
         for key, label in OLD_WORK_TYPES.items():
             db.execute("UPDATE requests SET work_type = ? WHERE work_type = ?", (label, key))
+        # Заявкам, созданным до появления журнала, добавляем запись «создал».
+        db.execute(
+            """INSERT INTO events (request_id, action, user_id, at)
+               SELECT id, 'created', created_by, created_at FROM requests
+               WHERE id NOT IN (SELECT request_id FROM events)"""
+        )
         db.commit()
     finally:
         db.close()
@@ -154,6 +180,26 @@ init_db()
 
 def now_local():
     return datetime.now(LOCAL_TZ).replace(microsecond=0, tzinfo=None)
+
+
+def log_event(db, request_id, action, user_id, at):
+    db.execute(
+        "INSERT INTO events (request_id, action, user_id, at) VALUES (?, ?, ?, ?)",
+        (request_id, action, user_id, at),
+    )
+
+
+def get_request_or_404(request_id):
+    row = get_db().execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
+    if row is None:
+        abort(404)
+    return row
+
+
+def get_events(request_id):
+    return get_db().execute(
+        "SELECT * FROM events WHERE request_id = ? ORDER BY at, id", (request_id,)
+    ).fetchall()
 
 
 # ---------------------------------------------------------------- вход
@@ -183,11 +229,24 @@ def check_csrf():
 
 @app.context_processor
 def inject_globals():
+    user = current_user()
+    counts = None
+    if user and user["role"] == "brigade":
+        db = get_db()
+        counts = {
+            "free": db.execute("SELECT COUNT(*) FROM requests WHERE status = 'new'").fetchone()[0],
+            "mine": db.execute(
+                "SELECT COUNT(*) FROM requests WHERE status = 'in_work' AND taken_by = ?",
+                (user["id"],),
+            ).fetchone()[0],
+        }
     return {
-        "user": current_user(),
+        "user": user,
+        "counts": counts,
         "csrf_token": csrf_token,
         "USERS": USERS,
         "STATUSES": STATUSES,
+        "EVENT_LABELS": EVENT_LABELS,
     }
 
 
@@ -362,6 +421,7 @@ def request_new():
         data, errors = read_request_form()
         if not errors:
             db = get_db()
+            user_id, at = current_user()["id"], now_local().isoformat()
             cur = db.execute(
                 """INSERT INTO requests
                    (client_name, phone, address, work_type, agreed_date, urgent,
@@ -375,10 +435,11 @@ def request_new():
                     data["agreed_date"] or None,
                     data["urgent"],
                     data["description"],
-                    current_user()["id"],
-                    now_local().isoformat(),
+                    user_id,
+                    at,
                 ),
             )
+            log_event(db, cur.lastrowid, "created", user_id, at)
             db.commit()
             return redirect(url_for("request_view", request_id=cur.lastrowid, created=1))
     today = now_local().date()
@@ -400,16 +461,92 @@ def request_new():
 @app.route("/zayavka/<int:request_id>")
 @login_required("boss", "office")
 def request_view(request_id):
-    row = get_db().execute("SELECT * FROM requests WHERE id = ?", (request_id,)).fetchone()
-    if row is None:
-        abort(404)
-    return render_template("request_view.html", r=row, created=request.args.get("created"))
+    return render_template(
+        "request_view.html",
+        r=get_request_or_404(request_id),
+        events=get_events(request_id),
+        created=request.args.get("created"),
+    )
+
+
+# ---------------------------------------------------------------- бригады
+
+# Свободные: срочные первыми, потом по ближайшему дню (без дня — в конце), потом старые раньше.
+FREE_ORDER = "urgent DESC, agreed_date IS NULL, agreed_date, id"
 
 
 @app.route("/brigada")
 @login_required("brigade")
 def brigade_home():
-    return render_template("brigade_home.html")
+    rows = get_db().execute(
+        f"SELECT * FROM requests WHERE status = 'new' ORDER BY {FREE_ORDER}"
+    ).fetchall()
+    return render_template("brigade_home.html", requests=rows)
+
+
+@app.route("/brigada/moi")
+@login_required("brigade")
+def brigade_mine():
+    rows = get_db().execute(
+        f"SELECT * FROM requests WHERE status = 'in_work' AND taken_by = ? ORDER BY {FREE_ORDER}",
+        (current_user()["id"],),
+    ).fetchall()
+    return render_template("brigade_mine.html", requests=rows)
+
+
+@app.route("/brigada/zayavka/<int:request_id>")
+@login_required("brigade")
+def brigade_request(request_id):
+    row = get_request_or_404(request_id)
+    mine = row["taken_by"] == current_user()["id"]
+    if row["status"] != "new" and not mine:
+        flash("Эту заявку уже взяла другая бригада или её отменили.", "error")
+        return redirect(url_for("brigade_home"))
+    return render_template("brigade_request.html", r=row, mine=mine)
+
+
+@app.route("/brigada/zayavka/<int:request_id>/vzyat", methods=["POST"])
+@login_required("brigade")
+def brigade_take(request_id):
+    get_request_or_404(request_id)
+    db = get_db()
+    user_id, at = current_user()["id"], now_local().isoformat()
+    # Берём только если заявка ещё свободна. Проверка и запись — одной командой,
+    # поэтому две бригады не могут взять одну заявку, даже нажав одновременно.
+    cur = db.execute(
+        """UPDATE requests SET status = 'in_work', taken_by = ?, taken_at = ?, updated_at = ?
+           WHERE id = ? AND status = 'new'""",
+        (user_id, at, at, request_id),
+    )
+    if cur.rowcount == 0:
+        db.rollback()
+        flash("Не получилось: эту заявку только что взяла другая бригада.", "error")
+        return redirect(url_for("brigade_home"))
+    log_event(db, request_id, "taken", user_id, at)
+    db.commit()
+    flash(f"Заявка №{request_id} ваша. Она теперь в «Мои заявки».", "ok")
+    return redirect(url_for("brigade_request", request_id=request_id))
+
+
+@app.route("/brigada/zayavka/<int:request_id>/vernut", methods=["POST"])
+@login_required("brigade")
+def brigade_return(request_id):
+    get_request_or_404(request_id)
+    db = get_db()
+    user_id, at = current_user()["id"], now_local().isoformat()
+    cur = db.execute(
+        """UPDATE requests SET status = 'new', taken_by = NULL, taken_at = NULL, updated_at = ?
+           WHERE id = ? AND status = 'in_work' AND taken_by = ?""",
+        (at, request_id, user_id),
+    )
+    if cur.rowcount == 0:
+        db.rollback()
+        flash("Эту заявку нельзя вернуть: она не у вас в работе.", "error")
+        return redirect(url_for("brigade_mine"))
+    log_event(db, request_id, "returned", user_id, at)
+    db.commit()
+    flash(f"Заявка №{request_id} возвращена в свободные.", "ok")
+    return redirect(url_for("brigade_mine"))
 
 
 @app.errorhandler(400)

@@ -20,8 +20,19 @@
       </div>
       {% endif %}
     </div>
+    {% if user and user.role == 'brigade' %}
+    <nav class="tabs">
+      <a href="{{ url_for('brigade_home') }}" class="{{ 'active' if request.endpoint == 'brigade_home' }}">
+        Свободные <span class="count">{{ counts.free }}</span></a>
+      <a href="{{ url_for('brigade_mine') }}" class="{{ 'active' if request.endpoint == 'brigade_mine' }}">
+        Мои заявки <span class="count">{{ counts.mine }}</span></a>
+    </nav>
+    {% endif %}
   </header>
   <main class="page">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <p class="{{ 'notice' if category == 'ok' else 'alert' }}">{{ message }}</p>
+    {% endfor %}
     {% block content %}{% endblock %}
   </main>
 </body>

@@ -189,3 +189,40 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; }
   border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px;
 }
 .chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Вкладки бригады */
+.tabs {
+  max-width: 960px; margin: 0 auto; padding: 0 16px;
+  display: flex; gap: 4px;
+}
+.tabs a {
+  padding: 10px 14px; color: var(--muted); text-decoration: none; font-weight: 600;
+  border-bottom: 3px solid transparent;
+}
+.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); }
+.count {
+  display: inline-block; min-width: 22px; padding: 0 6px; margin-left: 4px;
+  border-radius: 999px; background: var(--bg); color: var(--text);
+  font-size: 0.8rem; text-align: center;
+}
+.tabs a.active .count { background: var(--accent-soft); color: var(--accent); }
+
+/* Карточки бригады */
+.brigade-row { padding: 0; gap: 0; }
+.brigade-row .row-link {
+  display: grid; gap: 6px; padding: 14px 16px; color: var(--text); text-decoration: none;
+}
+.brigade-row form { padding: 0 16px 14px; margin: 0; }
+.row-day { margin-left: auto; color: var(--muted); font-size: 0.9rem; }
+.row-what { color: var(--muted); }
+.button.wide { width: 100%; }
+
+.actions { display: grid; gap: 12px; margin-top: 16px; max-width: 480px; }
+.actions form { margin: 0; }
+.actions p { margin: 0; }
+
+/* Журнал */
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.history li { display: flex; gap: 4px 16px; flex-wrap: wrap; }
+.history .when { color: var(--muted); min-width: 130px; font-variant-numeric: tabular-nums; }
+.event-returned strong, .event-cancelled strong { color: var(--danger); }

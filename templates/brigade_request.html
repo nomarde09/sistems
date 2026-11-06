@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Заявка №{{ r.id }} — Заявки{% endblock %}
+{% block content %}
+<p class="back">
+  {% if mine %}<a href="{{ url_for('brigade_mine') }}">← Мои заявки</a>
+  {% else %}<a href="{{ url_for('brigade_home') }}">← Свободные заявки</a>{% endif %}
+</p>
+
+<div class="page-head">
+  <h1>Заявка №{{ r.id }}</h1>
+  <div class="badges">
+    <span class="badge status-{{ r.status }}">{{ STATUSES[r.status] }}</span>
+    {% if r.urgent %}<span class="badge urgent">Срочно</span>{% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <dl class="details">
+    <dt>Адрес</dt><dd>{{ r.address }}</dd>
+    <dt>Договорились на</dt><dd>{{ (r.agreed_date | d) or "день не назначен" }}</dd>
+    <dt>Что монтируем</dt><dd>{{ r.work_type }}</dd>
+    <dt>Что сделать</dt><dd class="multiline">{{ r.description }}</dd>
+    <dt>Клиент</dt><dd>{{ r.client_name }}</dd>
+    <dt>Телефон</dt><dd><a href="tel:{{ r.phone }}">{{ r.phone }}</a></dd>
+    <dt>Заявку дал</dt><dd>{{ r.created_by | who }}</dd>
+  </dl>
+</section>
+
+<div class="actions">
+  {% if r.status == 'new' %}
+  <form method="post" action="{{ url_for('brigade_take', request_id=r.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="button primary wide" type="submit">Взять заявку</button>
+  </form>
+  {% elif mine and r.status == 'in_work' %}
+  <p class="muted">Вы взяли эту заявку {{ r.taken_at | dt }}. Отчёт о выполнении появится на следующем этапе.</p>
+  <form method="post" action="{{ url_for('brigade_return', request_id=r.id) }}"
+        onsubmit="return confirm('Вернуть заявку №{{ r.id }} в свободные? Её сможет взять другая бригада.');">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button class="button wide" type="submit">Вернуть в свободные</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

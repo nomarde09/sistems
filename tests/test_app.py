@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -38,6 +39,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         with m.app.app_context():
             db = m.get_db()
+            db.execute("DELETE FROM events")
             db.execute("DELETE FROM requests")
             db.commit()
 
@@ -227,6 +229,133 @@ class CreateRequestTests(Base):
 
     def test_missing_request_is_404(self):
         self.assertEqual(self.client("manager1").get("/zayavka/999").status_code, 404)
+
+
+class BrigadeTests(Base):
+    def make_request(self, **fields):
+        c = self.client("manager1")
+        r = self.post(c, "/ofis/novaya", {**GOOD_REQUEST, **fields})
+        return int(r.location.split("/zayavka/")[1].split("?")[0])
+
+    def take(self, c, rid):
+        return self.post(c, f"/brigada/zayavka/{rid}/vzyat", {}, page="/brigada")
+
+    def give_back(self, c, rid):
+        return self.post(c, f"/brigada/zayavka/{rid}/vernut", {}, page="/brigada/moi")
+
+    def row(self, rid):
+        with m.app.app_context():
+            return m.get_db().execute("SELECT * FROM requests WHERE id = ?", (rid,)).fetchone()
+
+    def actions(self, rid):
+        with m.app.app_context():
+            return [(e["action"], e["user_id"]) for e in m.get_db().execute(
+                "SELECT * FROM events WHERE request_id = ? ORDER BY id", (rid,))]
+
+    def test_free_list_shows_new_requests_with_take_button(self):
+        rid = self.make_request(address="ул. Лесная, 1")
+        html = self.client("brigada1").get("/brigada").text
+        self.assertIn("ул. Лесная, 1", html)
+        self.assertIn(f"/brigada/zayavka/{rid}/vzyat", html)
+        self.assertIn("Взять", html)
+
+    def test_take_moves_request_to_mine_and_hides_from_other_brigade(self):
+        rid = self.make_request(address="ул. Лесная, 1")
+        b1, b2 = self.client("brigada1"), self.client("brigada2")
+        r = self.take(b1, rid)
+        self.assertEqual(r.status_code, 302)
+        row = self.row(rid)
+        self.assertEqual((row["status"], row["taken_by"]), ("in_work", "brigada1"))
+        self.assertTrue(row["taken_at"])
+        self.assertIn("ул. Лесная, 1", b1.get("/brigada/moi").text)
+        self.assertNotIn("ул. Лесная, 1", b1.get("/brigada").text)
+        self.assertNotIn("ул. Лесная, 1", b2.get("/brigada").text)
+        self.assertNotIn("ул. Лесная, 1", b2.get("/brigada/moi").text)
+        # чужую заявку в работе вторая бригада не открывает
+        self.assertEqual(b2.get(f"/brigada/zayavka/{rid}").status_code, 302)
+        office = self.client("rukovoditel").get(f"/zayavka/{rid}").text
+        self.assertIn("В работе", office)
+        self.assertIn("Бригада 1", office)
+
+    def test_second_brigade_cannot_take_taken_request(self):
+        rid = self.make_request()
+        b1, b2 = self.client("brigada1"), self.client("brigada2")
+        self.take(b1, rid)
+        r = self.take(b2, rid)
+        self.assertIn("только что взяла другая бригада", b2.get(r.location).text)
+        self.assertEqual(self.row(rid)["taken_by"], "brigada1")
+        self.assertEqual([a for a, _ in self.actions(rid)], ["created", "taken"])
+
+    def test_simultaneous_take_gives_request_to_exactly_one_brigade(self):
+        for _ in range(15):
+            rid = self.make_request()
+            clients = {b: self.client(b) for b in BRIGADES}
+            tokens = {b: csrf_from(c.get("/brigada").text) for b, c in clients.items()}
+            start = threading.Barrier(len(clients))
+            results = {}
+
+            def press(b):
+                start.wait()
+                results[b] = clients[b].post(f"/brigada/zayavka/{rid}/vzyat",
+                                             data={"csrf": tokens[b]}).location
+
+            threads = [threading.Thread(target=press, args=(b,)) for b in clients]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            winners = [b for b, loc in results.items() if f"/brigada/zayavka/{rid}" in loc]
+            self.assertEqual(len(winners), 1, results)
+            self.assertEqual(self.row(rid)["taken_by"], winners[0])
+            self.assertEqual(sum(a == "taken" for a, _ in self.actions(rid)), 1)
+
+    def test_return_puts_request_back_for_everyone(self):
+        rid = self.make_request(address="ул. Лесная, 1")
+        b1, b2 = self.client("brigada1"), self.client("brigada2")
+        self.take(b1, rid)
+        r = self.give_back(b1, rid)
+        self.assertIn("возвращена в свободные", b1.get(r.location).text)
+        row = self.row(rid)
+        self.assertEqual((row["status"], row["taken_by"], row["taken_at"]), ("new", None, None))
+        self.assertIn("ул. Лесная, 1", b2.get("/brigada").text)
+        self.take(b2, rid)
+        self.assertEqual(self.row(rid)["taken_by"], "brigada2")
+        self.assertEqual(self.actions(rid), [("created", "manager1"), ("taken", "brigada1"),
+                                             ("returned", "brigada1"), ("taken", "brigada2")])
+        history = self.client("rukovoditel").get(f"/zayavka/{rid}").text
+        self.assertIn("вернула в свободные", history)
+
+    def test_cannot_return_someone_elses_request(self):
+        rid = self.make_request()
+        b1, b2 = self.client("brigada1"), self.client("brigada2")
+        self.take(b1, rid)
+        self.give_back(b2, rid)
+        self.assertEqual(self.row(rid)["taken_by"], "brigada1")
+        self.give_back(b1, self.make_request())  # свободную тоже «вернуть» нельзя
+        self.assertEqual(self.row(rid)["status"], "in_work")
+
+    def test_free_list_order_urgent_then_nearest_day(self):
+        late = self.make_request(address="Поздний", urgent="", agreed_day="28", agreed_month="2026-11")
+        nodate = self.make_request(address="Без дня", urgent="", agreed_day="")
+        soon = self.make_request(address="Ранний", urgent="", agreed_day="10", agreed_month="2026-11")
+        urgent = self.make_request(address="Срочный", urgent="1", agreed_day="")
+        html = self.client("brigada1").get("/brigada").text
+        order = [html.index(a) for a in ("Срочный", "Ранний", "Поздний", "Без дня")]
+        self.assertEqual(order, sorted(order))
+
+    def test_counters_in_tabs(self):
+        self.make_request(); rid = self.make_request()
+        b1 = self.client("brigada1")
+        self.take(b1, rid)
+        html = b1.get("/brigada").text
+        self.assertRegex(html, r'Свободные <span class="count">1</span>')
+        self.assertRegex(html, r'Мои заявки <span class="count">1</span>')
+
+    def test_office_cannot_use_brigade_actions(self):
+        rid = self.make_request()
+        c = self.client("manager1")
+        self.post(c, f"/brigada/zayavka/{rid}/vzyat", {}, page="/ofis")
+        self.assertEqual(self.row(rid)["status"], "new")
 
 
 if __name__ == "__main__":

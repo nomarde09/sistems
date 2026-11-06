@@ -26,11 +26,13 @@
 
 <h2>История</h2>
 <section class="card">
-  <dl class="details">
-    <dt>Создал</dt><dd>{{ r.created_by | who }}, {{ r.created_at | dt }}</dd>
-    {% if r.taken_by %}<dt>Взяла</dt><dd>{{ r.taken_by | who }}, {{ r.taken_at | dt }}</dd>{% endif %}
-    {% if r.done_at %}<dt>Выполнена</dt><dd>{{ r.done_at | dt }}</dd>{% endif %}
-    {% if r.cancelled_at %}<dt>Отменил</dt><dd>{{ r.cancelled_by | who }}, {{ r.cancelled_at | dt }}</dd>{% endif %}
-  </dl>
+  <ol class="history">
+    {% for e in events %}
+    <li class="event-{{ e.action }}">
+      <span class="when">{{ e.at | dt }}</span>
+      <span><strong>{{ e.user_id | who }}</strong> — {{ EVENT_LABELS.get(e.action, e.action) | lower }}</span>
+    </li>
+    {% endfor %}
+  </ol>
 </section>
 {% endblock %}
