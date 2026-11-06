@@ -234,3 +234,27 @@ fieldset.field legend { padding: 0; margin-bottom: 6px; }
 .report { border-color: #b7dfc3; }
 .request-list.compact .request-row { padding: 10px 14px; }
 a.button.wide { display: block; }
+
+/* Фильтры */
+.filters { display: grid; gap: 14px; margin-bottom: 12px; padding: 16px; }
+.filters input[type=search] { letter-spacing: normal; }
+.filter-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.filter-row label { display: grid; gap: 4px; font-size: 0.875rem; color: var(--muted); }
+.filter-row select {
+  font: inherit; color: var(--text); padding: 9px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.summary { margin: 0 0 12px; color: var(--muted); }
+.summary strong { color: var(--text); }
+
+/* Действия руководителя */
+.boss-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; margin-top: 16px; }
+.cancel-box { flex: 1 1 320px; }
+.cancel-box summary { list-style: none; display: inline-block; }
+.cancel-box summary::-webkit-details-marker { display: none; }
+.cancel-box[open] summary { margin-bottom: 10px; }
+.button.danger { color: var(--danger); border-color: #e6b8b5; }
+.button.danger-solid { background: var(--danger); color: #fff; border-color: var(--danger); }
+.cancelled-box { margin-top: 16px; background: #f6f7f9; }
+.cancelled-box p { margin: 6px 0 0; }
+.form-section { margin: 8px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }

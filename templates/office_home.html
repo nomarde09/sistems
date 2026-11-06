@@ -6,6 +6,60 @@
   <a class="button primary" href="{{ url_for('request_new') }}">+ Новая заявка</a>
 </div>
 
+<form method="get" class="card filters" role="search">
+  <label class="field search">
+    <span class="sr-only">Поиск</span>
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Поиск: клиент, адрес, телефон, № заявки…">
+  </label>
+  <div class="filter-row">
+    <label>
+      <span>Статус</span>
+      <select name="status">
+        <option value="">любой</option>
+        {% for key, label in STATUSES.items() %}
+        <option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Бригада</span>
+      <select name="brigada">
+        <option value="">любая</option>
+        {% for key, u in brigades.items() %}
+        <option value="{{ key }}" {% if filters.brigada == key %}selected{% endif %}>{{ u.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Создал</span>
+      <select name="avtor">
+        <option value="">любой</option>
+        {% for key, u in authors.items() %}
+        <option value="{{ key }}" {% if filters.avtor == key %}selected{% endif %}>{{ u.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      <span>Выполнена</span>
+      <select name="period">
+        <option value="">когда угодно</option>
+        {% for key, label in periods.items() %}
+        <option value="{{ key }}" {% if filters.period == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+  <div class="form-actions">
+    <button class="button primary" type="submit">Найти</button>
+    {% if filtering %}<a class="button" href="{{ url_for('office_home') }}">Сбросить</a>{% endif %}
+  </div>
+</form>
+
+<p class="summary">
+  {% if filtering %}Найдено: <strong>{{ summary.found }}</strong>.{% else %}Всего заявок: <strong>{{ summary.found }}</strong>.{% endif %}
+  {% if summary.done %}Выполнено: <strong>{{ summary.done }}</strong> на сумму <strong class="price">{{ summary.total | money }}</strong>.{% endif %}
+</p>
+
 {% if requests %}
 <ul class="request-list">
   {% for r in requests %}
@@ -26,11 +80,17 @@
         <span>Создал: {{ r.created_by | who }}, {{ r.created_at | dt }}</span>
         {% if r.taken_by %}<span>Взяла: {{ r.taken_by | who }}</span>{% endif %}
         {% if r.status == 'done' %}<span class="done-meta">Выполнена {{ r.done_at | dt }} · <span class="price">{{ r.report_price | money }}</span></span>{% endif %}
+        {% if r.status == 'cancelled' %}<span>Отменил: {{ r.cancelled_by | who }}, {{ r.cancelled_at | dt }}</span>{% endif %}
       </div>
     </a>
   </li>
   {% endfor %}
 </ul>
+{% elif filtering %}
+<section class="card empty">
+  <p>Ничего не нашлось.</p>
+  <p class="muted">Попробуйте убрать часть условий или нажмите «Сбросить».</p>
+</section>
 {% else %}
 <section class="card empty">
   <p>Заявок пока нет.</p>

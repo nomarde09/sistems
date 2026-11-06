@@ -24,7 +24,38 @@
   </dl>
 </section>
 
+{% if r.status == 'cancelled' %}
+<section class="card cancelled-box">
+  <strong>Заявка отменена</strong> — {{ r.cancelled_by | who }}, {{ r.cancelled_at | dt }}.
+  {% if r.cancel_reason %}<p class="multiline">Причина: {{ r.cancel_reason }}</p>{% endif %}
+</section>
+{% endif %}
+
 {% if r.status == 'done' %}{% include "_report.html" %}{% endif %}
+
+{% if user.role == 'boss' and r.status != 'cancelled' %}
+<div class="boss-actions">
+  <a class="button" href="{{ url_for('request_edit', request_id=r.id) }}">Исправить</a>
+  {% if r.status in ('new', 'in_work') %}
+  <details class="cancel-box">
+    <summary class="button danger">Отменить заявку</summary>
+    <form method="post" action="{{ url_for('request_cancel', request_id=r.id) }}" class="card form">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      {% if r.status == 'in_work' %}
+      <p class="alert">Заявка сейчас у бригады «{{ r.taken_by | who }}». После отмены она пропадёт у неё из списка.</p>
+      {% endif %}
+      <label class="field">
+        <span>Причина <span class="muted">(необязательно)</span></span>
+        <input type="text" name="reason" autocomplete="off" placeholder="Например: клиент передумал">
+      </label>
+      <div class="form-actions">
+        <button class="button danger-solid" type="submit">Да, отменить заявку №{{ r.id }}</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</div>
+{% endif %}
 
 <h2>История</h2>
 <section class="card">
@@ -32,7 +63,7 @@
     {% for e in events %}
     <li class="event-{{ e.action }}">
       <span class="when">{{ e.at | dt }}</span>
-      <span><strong>{{ e.user_id | who }}</strong> — {{ EVENT_LABELS.get(e.action, e.action) | lower }}</span>
+      <span><strong>{{ e.user_id | who }}</strong> — {{ EVENT_LABELS.get(e.action, e.action) | lower }}{% if e.details %}<span class="muted"> ({{ e.details }})</span>{% endif %}</span>
     </li>
     {% endfor %}
   </ol>

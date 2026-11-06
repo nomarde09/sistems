@@ -1,9 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Новая заявка — Заявки{% endblock %}
+{% block title %}{{ ("Исправить заявку №" ~ edit.id) if edit else "Новая заявка" }} — Заявки{% endblock %}
 {% macro err(name) %}{% if errors.get(name) %}<span class="field-error">{{ errors[name] }}</span>{% endif %}{% endmacro %}
 {% block content %}
-<p class="back"><a href="{{ url_for('office_home') }}">← Все заявки</a></p>
+{% set back_url = url_for('request_view', request_id=edit.id) if edit else url_for('office_home') %}
+{% if edit %}
+<p class="back"><a href="{{ back_url }}">← Заявка №{{ edit.id }}</a></p>
+<h1>Исправить заявку №{{ edit.id }}</h1>
+{% else %}
+<p class="back"><a href="{{ back_url }}">← Все заявки</a></p>
 <h1>Новая заявка</h1>
+{% endif %}
 
 {% if errors %}<p class="alert">Проверьте поля, отмеченные красным.</p>{% endif %}
 
@@ -71,9 +77,30 @@
     {{ err('description') }}
   </label>
 
+  {% if edit and edit.status == 'done' %}
+  <h2 class="form-section">Отчёт бригады ({{ edit.taken_by | who }})</h2>
+
+  <label class="field {{ 'has-error' if errors.report_work }}">
+    <span>Что сделано</span>
+    <textarea name="report_work" rows="3" required>{{ data.report_work }}</textarea>
+    {{ err('report_work') }}
+  </label>
+
+  <label class="field {{ 'has-error' if errors.report_price }}">
+    <span>Цена, общая сумма</span>
+    <input type="text" name="report_price" value="{{ data.report_price }}" inputmode="numeric" autocomplete="off" required>
+    {{ err('report_price') }}
+  </label>
+
+  <label class="field">
+    <span>Комментарий <span class="muted">(необязательно)</span></span>
+    <textarea name="report_comment" rows="2">{{ data.report_comment }}</textarea>
+  </label>
+  {% endif %}
+
   <div class="form-actions">
-    <button class="button primary" type="submit">Создать заявку</button>
-    <a class="button" href="{{ url_for('office_home') }}">Отмена</a>
+    <button class="button primary" type="submit">{{ "Сохранить исправления" if edit else "Создать заявку" }}</button>
+    <a class="button" href="{{ back_url }}">Назад</a>
   </div>
 </form>
 <script>

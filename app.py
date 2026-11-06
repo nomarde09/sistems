@@ -157,11 +157,20 @@ def close_db(_exc):
         db.close()
 
 
+def ensure_column(db, table, column, declaration):
+    """Добавляет колонку в уже существующую таблицу, если её там ещё нет."""
+    existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
 def init_db():
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DATABASE)
     try:
         db.executescript(SCHEMA)
+        ensure_column(db, "requests", "cancel_reason", "TEXT")
+        ensure_column(db, "events", "details", "TEXT")  # что исправили / причина отмены
         for key, label in OLD_WORK_TYPES.items():
             db.execute("UPDATE requests SET work_type = ? WHERE work_type = ?", (label, key))
         # Заявкам, созданным до появления журнала, добавляем запись «создал».
@@ -182,10 +191,10 @@ def now_local():
     return datetime.now(LOCAL_TZ).replace(microsecond=0, tzinfo=None)
 
 
-def log_event(db, request_id, action, user_id, at):
+def log_event(db, request_id, action, user_id, at, details=None):
     db.execute(
-        "INSERT INTO events (request_id, action, user_id, at) VALUES (?, ?, ?, ?)",
-        (request_id, action, user_id, at),
+        "INSERT INTO events (request_id, action, user_id, at, details) VALUES (?, ?, ?, ?, ?)",
+        (request_id, action, user_id, at, details),
     )
 
 
@@ -367,9 +376,100 @@ def office_home():
     rows = get_db().execute(
         """SELECT * FROM requests
            ORDER BY CASE status WHEN 'new' THEN 0 WHEN 'in_work' THEN 1 ELSE 2 END,
-                    urgent DESC, id DESC"""
+                    urgent DESC, COALESCE(done_at, cancelled_at, created_at) DESC, id DESC"""
     ).fetchall()
-    return render_template("office_home.html", requests=rows)
+    filters = {
+        "q": request.args.get("q", "").strip(),
+        "status": request.args.get("status", ""),
+        "brigada": request.args.get("brigada", ""),
+        "avtor": request.args.get("avtor", ""),
+        "period": request.args.get("period", ""),
+    }
+    found = [r for r in rows if matches(r, filters)]
+    done = [r for r in found if r["status"] == "done"]
+    summary = {
+        "found": len(found),
+        "done": len(done),
+        "total": sum(r["report_price"] or 0 for r in done),
+    }
+    return render_template(
+        "office_home.html",
+        requests=found,
+        filters=filters,
+        filtering=any(filters.values()),
+        summary=summary,
+        periods=PERIODS,
+        brigades={k: v for k, v in USERS.items() if v["role"] == "brigade"},
+        authors={k: v for k, v in USERS.items() if v["role"] in ("boss", "office")},
+    )
+
+
+PERIODS = {
+    "today": "сегодня",
+    "yesterday": "вчера",
+    "week": "за 7 дней",
+    "month": "в этом месяце",
+    "prev_month": "в прошлом месяце",
+}
+
+
+def period_range(period):
+    """Период → (с какой даты, по какую дату включительно)."""
+    today = now_local().date()
+    if period == "today":
+        return today, today
+    if period == "yesterday":
+        day = today - timedelta(days=1)
+        return day, day
+    if period == "week":
+        return today - timedelta(days=6), today
+    first = today.replace(day=1)
+    if period == "month":
+        return first, today
+    if period == "prev_month":
+        last_prev = first - timedelta(days=1)
+        return last_prev.replace(day=1), last_prev
+    return None
+
+
+def matches(r, f):
+    """Подходит ли заявка под фильтры офиса."""
+    if f["status"] and r["status"] != f["status"]:
+        return False
+    if f["brigada"] and r["taken_by"] != f["brigada"]:
+        return False
+    if f["avtor"] and r["created_by"] != f["avtor"]:
+        return False
+    if f["period"]:
+        rng = period_range(f["period"])
+        if rng:
+            if r["status"] != "done":
+                return False
+            done_day = datetime.fromisoformat(r["done_at"]).date()
+            if not rng[0] <= done_day <= rng[1]:
+                return False
+    if f["q"]:
+        needle = f["q"].casefold()
+        haystack = " ".join(
+            str(r[k] or "") for k in
+            ("client_name", "address", "phone", "work_type", "description", "report_work", "report_comment")
+        ).casefold()
+        by_number = f["q"].lstrip("№ ") == str(r["id"])
+        if needle not in haystack and not by_number and not phone_matches(f["q"], r["phone"]):
+            return False
+    return True
+
+
+def phone_matches(query, phone):
+    """Ищем телефон по цифрам: «8 701 555» и «701-555» найдут «+7 701 555-12-34»."""
+    digits = "".join(ch for ch in query if ch.isdigit())
+    if len(digits) < 4:
+        return False
+    phone_digits = "".join(ch for ch in phone if ch.isdigit())
+    variants = {digits}
+    if len(digits) >= 7 and digits[0] in "78":
+        variants.add(digits[1:])  # 8 или 7 в начале — код страны, его могли записать по-разному
+    return any(v in phone_digits for v in variants)
 
 
 def build_agreed_date(day_text, month_text):
@@ -450,17 +550,29 @@ def request_new():
             log_event(db, cur.lastrowid, "created", user_id, at)
             db.commit()
             return redirect(url_for("request_view", request_id=cur.lastrowid, created=1))
+    return render_request_form(data, errors)
+
+
+def render_request_form(data, errors, edit=None):
+    """Форма заявки: новая (edit=None) или исправление существующей (edit=строка заявки)."""
     today = now_local().date()
     quick_dates = [
         (label, d.day, f"{d.year}-{d.month:02d}")
         for label, d in (("Сегодня", today), ("Завтра", today + timedelta(days=1)),
                          ("Послезавтра", today + timedelta(days=2)))
     ]
+    months = month_options()
+    # У старой заявки день может быть в прошедшем месяце — добавим его в список.
+    chosen = data.get("agreed_month")
+    if chosen and chosen not in {value for value, _ in months}:
+        year, month = (int(x) for x in chosen.split("-"))
+        months.insert(0, (chosen, f"{MONTHS[month - 1]} {year}"))
     return render_template(
         "request_form.html",
         data=data,
         errors=errors,
-        months=month_options(),
+        edit=edit,
+        months=months,
         current_month=f"{today.year}-{today.month:02d}",
         quick_dates=quick_dates,
     )
@@ -475,6 +587,103 @@ def request_view(request_id):
         events=get_events(request_id),
         created=request.args.get("created"),
     )
+
+
+# Что можно исправлять и как это называть в журнале.
+EDITABLE_FIELDS = {
+    "client_name": "имя клиента",
+    "phone": "телефон",
+    "address": "адрес",
+    "work_type": "что монтируем",
+    "agreed_date": "день",
+    "urgent": "срочность",
+    "description": "описание",
+}
+REPORT_FIELDS = {
+    "report_work": "что сделано",
+    "report_price": "цена",
+    "report_comment": "комментарий",
+}
+
+
+@app.route("/zayavka/<int:request_id>/ispravit", methods=["GET", "POST"])
+@login_required("boss")
+def request_edit(request_id):
+    row = get_request_or_404(request_id)
+    if row["status"] == "cancelled":
+        flash("Отменённую заявку исправить нельзя.", "error")
+        return redirect(url_for("request_view", request_id=request_id))
+    with_report = row["status"] == "done"
+
+    if request.method == "GET":
+        data = dict(row)
+        if row["agreed_date"]:
+            d = date.fromisoformat(row["agreed_date"])
+            data["agreed_day"], data["agreed_month"] = str(d.day), f"{d.year}-{d.month:02d}"
+        data["report_price"] = "" if row["report_price"] is None else str(row["report_price"])
+        data["report_comment"] = row["report_comment"] or ""
+        return render_request_form(data, {}, edit=row)
+
+    data, errors = read_request_form()
+    fields = dict(EDITABLE_FIELDS)
+    if with_report:
+        fields.update(REPORT_FIELDS)
+        data["report_work"] = request.form.get("report_work", "").strip()
+        data["report_comment"] = request.form.get("report_comment", "").strip()
+        price_text = request.form.get("report_price", "").strip()
+        price = parse_price(price_text)
+        if not data["report_work"]:
+            errors["report_work"] = "Напишите, что сделали."
+        if price is None:
+            errors["report_price"] = "Укажите цену цифрами."
+        if errors:
+            data["report_price"] = price_text
+        else:
+            data["report_price"] = price
+    if errors:
+        return render_request_form(data, errors, edit=row)
+
+    new_values = {name: (data[name] if data[name] != "" else None) for name in fields}
+    new_values["urgent"] = data["urgent"]
+    changed = [label for name, label in fields.items() if new_values[name] != row[name]]
+    if not changed:
+        flash("Ничего не изменилось.", "ok")
+        return redirect(url_for("request_view", request_id=request_id))
+
+    db = get_db()
+    at = now_local().isoformat()
+    assignments = ", ".join(f"{name} = ?" for name in fields)
+    db.execute(
+        f"UPDATE requests SET {assignments}, updated_at = ? WHERE id = ?",
+        (*new_values.values(), at, request_id),
+    )
+    log_event(db, request_id, "edited", current_user()["id"], at, "исправлено: " + ", ".join(changed))
+    db.commit()
+    flash("Заявка исправлена.", "ok")
+    return redirect(url_for("request_view", request_id=request_id))
+
+
+@app.route("/zayavka/<int:request_id>/otmenit", methods=["POST"])
+@login_required("boss")
+def request_cancel(request_id):
+    get_request_or_404(request_id)
+    reason = request.form.get("reason", "").strip()
+    db = get_db()
+    user_id, at = current_user()["id"], now_local().isoformat()
+    cur = db.execute(
+        """UPDATE requests SET status = 'cancelled', cancelled_by = ?, cancelled_at = ?,
+                  cancel_reason = ?, updated_at = ?
+           WHERE id = ? AND status IN ('new', 'in_work')""",
+        (user_id, at, reason or None, at, request_id),
+    )
+    if cur.rowcount == 0:
+        db.rollback()
+        flash("Эту заявку уже нельзя отменить.", "error")
+    else:
+        log_event(db, request_id, "cancelled", user_id, at, reason or None)
+        db.commit()
+        flash(f"Заявка №{request_id} отменена.", "ok")
+    return redirect(url_for("request_view", request_id=request_id))
 
 
 # ---------------------------------------------------------------- бригады
