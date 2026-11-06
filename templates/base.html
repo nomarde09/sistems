@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Заявки{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('index') }}">Заявки</a>
+      {% if user %}
+      <div class="who">
+        <span class="who-name">{{ user.name }}</span>
+        <form method="post" action="{{ url_for('logout') }}">
+          <button class="link-button" type="submit">Выйти</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
